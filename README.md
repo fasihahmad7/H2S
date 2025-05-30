@@ -37,4 +37,8 @@ streamlit run app.py
 4. Get AI-powered feedback on your answers
 5. Track your progress and improvement
 
+## Demo
+Watch the demo video to see the AI Interview Assistant in action:
+[Demo Video](DEMO_VIDEO_LINK) <!-- Replace DEMO_VIDEO_LINK with your YouTube/Google Drive link once uploaded -->
+
 Built for the Google AI Hackathon 2025
