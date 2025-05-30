@@ -39,6 +39,6 @@ streamlit run app.py
 
 ## Demo
 Watch the demo video to see the AI Interview Assistant in action:
-[Demo Video](DEMO_VIDEO_LINK) <!-- Replace DEMO_VIDEO_LINK with your YouTube/Google Drive link once uploaded -->
+[Demo Video](https://www.youtube.com/watch?v=cZKryXJsPzo)
 
-Built for the Google AI Hackathon 2025
+Built for the Gen AI Exchange Bootcamp - Ahmedabad
