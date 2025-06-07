@@ -1,187 +1,598 @@
 import streamlit as st
 import google.generativeai as genai
-import os
-from dotenv import load_dotenv
-from typing import Optional, Dict, Any
+from functools import wraps
+import time
 import json
+import os
+from datetime import datetime
+from dotenv import load_dotenv
 
-# --- Constants ---
+def get_focus_points(interview_type: str, role: str) -> str:
+    """Get focus points based on interview type and role."""
+    if interview_type == "Technical":
+        return "technical skills, coding ability, and problem-solving methodology"
+    elif interview_type == "Behavioral":
+        return "past experiences, soft skills, and professional conduct"
+    else:  # Problem Solving
+        return "analytical thinking, solution design, and implementation approach"
+
+# Load environment variables
+load_dotenv()
+
+# Configure page
+st.set_page_config(
+    page_title="AI Interview Assistant",
+    page_icon="🎯",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Constants
+INTERVIEW_TYPES = [
+    "Technical", "Behavioral", "Problem Solving"
+]
+
+DIFFICULTY_LEVELS = [
+    "Easy", "Medium", "Hard", "Legend"
+]
+
 JOB_ROLES = [
     "Software Engineer", "Data Scientist", "Product Manager",
     "Full Stack Developer", "AI/ML Engineer", "DevOps Engineer",
-    "QA Engineer", "Automation Test Engineer", "SDET",
-    "Performance Test Engineer"
+    "QA Engineer", "Automation Test Engineer", "SDET", 
+    "Performance Test Engineer", "API Test Engineer",
+    "Mobile Test Engineer", "Security Test Engineer",
+    "Test Architect", "QA Lead", "Functional Tester"
 ]
 
 EXPERIENCE_RANGES = [
     "0-2 years", "2-5 years", "5-8 years", "8+ years"
 ]
 
-QUESTION_TYPES = {
-    "technical": "Generate a technical question that tests specific knowledge and problem-solving skills.",
-    "behavioral": "Generate a behavioral question that assesses past experiences and soft skills.",
-    "problem_solving": "Generate a problem-solving question that evaluates analytical thinking."
-}
+# Configure Google API
+GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
+if not GOOGLE_API_KEY:
+    st.error("⚠️ API Key not found! Please follow these steps:")
+    st.markdown("""
+    1. Create a `.env` file in the project root
+    2. Add your Google API key: `GOOGLE_API_KEY=your_key_here`
+    3. Restart the application
+    """)
+    st.stop()
 
-# --- Model Configuration ---
-# In your main streamlit app file
+try:
+    genai.configure(api_key=GOOGLE_API_KEY)
+except Exception as e:
+    st.error(f"⚠️ Error configuring API: {str(e)}")
+    st.stop()
 
-def initialize_ai_model() -> Optional[genai.GenerativeModel]:
-    """Initialize and configure the Gemini AI model."""
-    load_dotenv()
-    api_key = os.getenv('GOOGLE_API_KEY')
+# Retry decorator for API calls
+def retry_on_error(max_retries=3, delay=1):
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            retries = 0
+            while retries < max_retries:
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    retries += 1
+                    if retries == max_retries:
+                        raise e
+                    time.sleep(delay)
+            return None
+        return wrapper
+    return decorator
 
-    if not api_key:
-        st.error("🔴 API key (GOOGLE_API_KEY) not found. Check your .env file.")
-        return None
+@retry_on_error()
+def get_ai_response(messages):
+    model = genai.GenerativeModel('gemini-1.5-flash-latest')
+    response = model.generate_content(messages)
+    return response.text
 
-    try:
-        genai.configure(api_key=api_key)
-        
-        # --- THE FINAL FIX ---
-        # Use the powerful Gemini 1.5 Pro model that your key has access to.
-        model = genai.GenerativeModel('gemini-1.5-flash-latest') 
-        
-        return model
-    except Exception as e:
-        st.error(f"🔴 Error during AI Model setup: {str(e)}")
-        st.error("Troubleshooting: Check API key, 'Generative Language API' in GCP, SDK version.")
-        return None
-
-def generate_interview_question(model: genai.GenerativeModel, job_role: str, question_type: str, experience: str) -> str:
-    """Generate an interview question based on job role, type, and experience level."""
-    prompt = f"""Generate a {question_type} interview question for a {job_role} position with {experience} of experience.
-    The question should:
-    1. Match the experience level ({experience})
-    2. Be specific to the role and requirements
-    3. Test both knowledge and application
-    4. Be clear and concise
-    5. Encourage detailed responses
-    Question type context: {QUESTION_TYPES[question_type]}
-    Return only the question text, with no introductory phrases."""
-
-    try:
-        response = model.generate_content(prompt)
-        return response.text
-    except Exception as e:
-        st.error(f"Error generating question: {str(e)}")
-        return "Failed to generate question. Please try again."
-
-def analyze_answer(model: genai.GenerativeModel, job_role: str, question: str, answer: str) -> Dict[str, Any]:
-    """Analyze interview answer and provide feedback safely using JSON."""
-    prompt = f"""Analyze this interview answer for a {job_role} position.
-    Question: {question}
-    Answer: {answer}
-    Provide feedback as a valid JSON object. Do not include markdown formatting like ```json.
-    Your entire response should be only the JSON object, structured as follows:
-    {{
-        "score": <integer from 1 to 10>,
-        "strengths": ["<strength 1>", "<strength 2>"],
-        "areas_for_improvement": ["<area 1>", "<area 2>"],
-        "suggested_answer": "<a brief example of a strong answer>",
-        "technical_accuracy": <integer from 1 to 10>,
-        "communication_clarity": <integer from 1 to 10>
-    }}"""
-
-    error_feedback = {
-        "score": 0, "strengths": ["Analysis failed"],
-        "areas_for_improvement": ["Please try again"],
-        "suggested_answer": "Analysis unavailable", "technical_accuracy": 0, "communication_clarity": 0
+def calculate_role_specific_metrics(role, experience, responses):
+    # Initialize metrics with default values
+    metrics = {
+        'domain_knowledge': 0.0,
+        'methodology_understanding': 0.0,
+        'practical_experience': 0.0
     }
+    
+    if not responses:
+        return metrics
+    
+    # Role-specific keywords for scoring
+    role_keywords = {
+        "Software Engineer": {
+            "domain": ["algorithm", "data structure", "programming", "code", "software", "development", "testing", "git"],
+            "methodology": ["agile", "scrum", "tdd", "ci/cd", "design pattern", "architecture", "review"],
+            "practical": ["implemented", "developed", "built", "created", "managed", "debugged", "optimized"]
+        },
+        "Data Scientist": {
+            "domain": ["machine learning", "statistics", "data analysis", "model", "algorithm", "python", "r"],
+            "methodology": ["research", "analysis", "hypothesis", "validation", "cross-validation", "pipeline"],
+            "practical": ["analyzed", "trained", "evaluated", "deployed", "improved", "experimented"]
+        },
+        "Functional Tester": {
+            "domain": ["test cases", "requirements", "user scenarios", "acceptance criteria", "defect", "bug", "regression", "test plan"],
+            "methodology": ["manual testing", "test design", "test execution", "test strategy", "risk analysis", "test reporting"],
+            "practical": ["tested", "verified", "validated", "documented", "reported", "reproduced", "identified"]
+        }
+        # Add more roles as needed...
+    }
+    
+    # Use default keywords if role not found
+    default_keywords = {
+        "domain": ["technical", "skill", "knowledge", "understanding"],
+        "methodology": ["process", "method", "approach", "solution", "strategy"],
+        "practical": ["experience", "project", "worked", "implemented", "handled"]
+    }
+    
+    keywords = role_keywords.get(role, default_keywords)
+    
+    # Calculate scores based on keyword matches
+    for response in responses:
+        content = response.get("content", "").lower()
+        
+        # Domain Knowledge Score
+        domain_matches = sum(1 for keyword in keywords["domain"] if keyword in content)
+        metrics['domain_knowledge'] += (domain_matches / len(keywords["domain"])) * 10
+        
+        # Methodology Understanding Score
+        method_matches = sum(1 for keyword in keywords["methodology"] if keyword in content)
+        metrics['methodology_understanding'] += (method_matches / len(keywords["methodology"])) * 10
+        
+        # Practical Experience Score
+        practical_matches = sum(1 for keyword in keywords["practical"] if keyword in content)
+        metrics['practical_experience'] += (practical_matches / len(keywords["practical"])) * 10
+    
+    # Average the scores
+    response_count = len(responses)
+    metrics['domain_knowledge'] = round(metrics['domain_knowledge'] / response_count, 1)
+    metrics['methodology_understanding'] = round(metrics['methodology_understanding'] / response_count, 1)
+    metrics['practical_experience'] = round(metrics['practical_experience'] / response_count, 1)
+    
+    return metrics
 
-    try:
-        response = model.generate_content(prompt)
-        text_response = response.text
-        cleaned_text = text_response.strip().replace("```json", "").replace("```", "")
-        return json.loads(cleaned_text)
-    except json.JSONDecodeError as e:
-        st.error(f"Error parsing JSON from model: {e}")
-        st.error(f"Model's raw response was: {text_response}")
-        return error_feedback
-    except Exception as e:
-        st.error(f"Error analyzing answer: {str(e)}")
-        return error_feedback
+def export_interview_history():
+    history = {
+        'timestamp': datetime.now().isoformat(),
+        'history': st.session_state.interview_history,
+        'stats': st.session_state.session_stats
+    }
+    return json.dumps(history, indent=2)
 
-# --- Main Application ---
-def main():
-    # Page Configuration
-    st.set_page_config(
-        page_title="AI Interview Assistant",
-        page_icon="🤖",
-        layout="wide"
-    )
-    st.title("🤖 AI Interview Assistant")
+# Initialize session state
+if 'messages' not in st.session_state:
+    st.session_state.messages = []
+if 'interview_history' not in st.session_state:
+    st.session_state.interview_history = []
+if 'session_stats' not in st.session_state:
+    st.session_state.session_stats = {
+        'total_questions': 0,
+        'technical_score': 0,
+        'communication_score': 0,
+        'role_specific_metrics': {}
+    }
+if 'interview_started' not in st.session_state:
+    st.session_state.interview_started = False
 
-    # --- DIAGNOSTIC BLOCK ---
-    # This will show us exactly which version of the library is being used.
-    st.info(f"**Running `google-generativeai` version:** `{genai.__version__}`")
-    # --- END OF DIAGNOSTIC BLOCK ---
+# Custom CSS for Adobe-like styling
+st.markdown("""
+    <style>    /* Hide default Streamlit elements */
+    #MainMenu, footer {visibility: hidden;}
+    
+    /* Input field styling */
+    .stTextInput > div > div > input {
+        color: #E6E6E6 !important;
+        background-color: #393939 !important;
+        border: 1px solid #464646 !important;
+        border-radius: 6px !important;
+        padding: 0.5rem 1rem !important;
+    }
+    .stTextInput > div > div > input:focus {
+        border-color: #1473E6 !important;
+        box-shadow: 0 0 0 1px #1473E6 !important;
+    }
+    
+    /* Question formatting */
+    .interview-message b {
+        color: #1473E6;
+        display: inline-block;
+        margin-bottom: 0.5rem;
+    }
+    .interview-message br {
+        content: "";
+        display: block;
+        margin: 0.5rem 0;
+    }
+    
+    /* Input field styling */
+    .stTextInput > div > div > input {
+        color: #E6E6E6 !important;
+        background-color: #393939 !important;
+        border: 1px solid #464646 !important;
+        border-radius: 6px !important;
+        padding: 0.5rem 1rem !important;
+    }
+    .stTextInput > div > div > input:focus {
+        border-color: #1473E6 !important;
+        box-shadow: 0 0 0 1px #1473E6 !important;
+    }
+    
+    /* Question formatting */
+    .interview-message b {
+        color: #1473E6;
+        display: inline-block;
+        margin-bottom: 0.5rem;
+    }
+    .interview-message br {
+        content: "";
+        display: block;
+        margin: 0.5rem 0;
+    }
+    
+    /* Base styles - Adobe-like theme */
+    .stApp {
+        background-color: #2D2D2D;
+    }
+    
+    /* Top bar styling */
+    header {
+        background-color: #323232 !important;
+        border-bottom: 1px solid #464646;
+    }
+    
+    /* Global text color */
+    .stApp, .stTextInput, .stSelectbox, div[data-baseweb="select"], 
+    .streamlit-expanderHeader, div[data-testid="stMarkdown"] {
+        color: #E6E6E6 !important;
+    }
+      /* Sidebar styling - Adobe-like */
+    section[data-testid="stSidebar"] {
+        background-color: #2D2D2D;
+        border-right: 1px solid #464646;
+    }
+    section[data-testid="stSidebar"] .stMarkdown {
+        color: #E6E6E6;
+    }
+    section[data-testid="stSidebar"] .stMarkdown a {
+        color: #4B9AD8;
+    }
+      /* Title and containers - Adobe-like */
+    .main-title {
+        text-align: center;
+        color: #E6E6E6;
+        padding: 1.5rem;
+        border-radius: 6px;
+        margin: 1rem 0;
+        background: #1473E6;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+    }
+    
+    .stat-box {
+        background-color: #393939;
+        padding: 1rem;
+        border-radius: 6px;
+        margin: 0.5rem 0;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        border-left: 4px solid #1473E6;
+    }    /* Interview messages - Adobe-like */
+    .interview-message {
+        padding: 1rem;
+        border-radius: 6px;
+        margin: 1rem 0;
+        background-color: #393939;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        color: #E6E6E6;
+    }
+    .interviewer-message {
+        border-left: 4px solid #1473E6;
+    }    .user-message {
+        border-left: 4px solid #4B9AD8;
+        background-color: #2D2D2D;
+    }
+    .user-message b, .user-message br, .user-message {
+        color: #E6E6E6 !important;
+    }
+    
+    /* Ensure text inputs and placeholders are visible */
+    .stTextInput input::placeholder {
+        color: #95A5A6 !important;
+    }    .stTextInput > div > div > input {
+        color: #E6E6E6 !important;
+        background-color: #393939 !important;
+        border-color: #464646 !important;
+    }
+    .stTextInput > div > div > input:focus {
+        border-color: #1473E6 !important;
+        box-shadow: 0 0 0 1px #1473E6 !important;
+    }/* Form elements - Adobe-like */
+    .stTextInput > div > div, 
+    .stSelectbox > div > div,
+    div[data-baseweb="select"] > div {
+        background-color: #393939 !important;
+        border: 1px solid #464646 !important;
+        border-radius: 6px !important;
+        color: #E6E6E6 !important;
+    }
+    
+    /* Headers and labels - Adobe-like */
+    h1, h2, h3, h4, h5, h6,
+    label, .stMarkdown p {
+        color: #E6E6E6 !important;
+    }
+      /* Button styling - Adobe-like */
+    .stButton > button {
+        width: 100%;
+        background: #1473E6 !important;
+        color: white !important;
+        border: none !important;
+        padding: 0.5rem 1rem !important;
+        border-radius: 6px !important;
+        font-weight: 500 !important;
+        transition: all 0.2s ease !important;
+    }
+    .stButton > button:hover {
+        background: #0D66D0 !important;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2) !important;
+    }
+      /* Dropdown styling - Adobe-like */
+    div[role="listbox"] {
+        background-color: #393939 !important;
+        border: 1px solid #464646 !important;
+        border-radius: 6px !important;
+    }
+    div[role="option"] {
+        color: #E6E6E6 !important;
+        padding: 8px 12px !important;
+    }
+    div[role="option"]:hover {
+        background-color: #464646 !important;
+    }
+    div[data-baseweb="select"] span {
+        color: #E6E6E6 !important;
+    }
+    
+    /* Input field styling */
+    .stTextInput input::placeholder {
+        color: #8E8E8E !important;
+    }
+    
+    /* Progress indicators and spinners */
+    .stProgress > div > div {
+        background-color: #1473E6 !important;
+    }
+    
+    /* Alert and info boxes */
+    .stAlert {
+        background-color: #393939 !important;
+        border: 1px solid #464646 !important;
+        color: #E6E6E6 !important;
+    }
+    
+    /* Links */
+    a {
+        color: #4B9AD8 !important;
+        text-decoration: none !important;
+    }
+    a:hover {
+        text-decoration: underline !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
-    # Initialize components
-    model = initialize_ai_model()
-    if not model:
-        st.warning("⚠️ Please set up your API key in the .env file to continue.")
-        st.stop()
+# Main UI
+st.markdown('<h1 class="main-title">🎯 AI Interview Assistant</h1>', unsafe_allow_html=True)
+st.markdown('<p style="text-align:center;">Powered by Google Gemini 1.5</p>', unsafe_allow_html=True)
 
-    # Initialize session state
-    if 'current_question' not in st.session_state:
-        st.session_state.current_question = None
-    if 'interview_history' not in st.session_state:
-        st.session_state.interview_history = []    # Sidebar configuration
-    with st.sidebar:
-        st.header("Interview Settings")
-        job_role = st.selectbox("Select Position", JOB_ROLES)
-        experience = st.selectbox("Years of Experience", EXPERIENCE_RANGES)
-        question_type = st.selectbox("Question Type", list(QUESTION_TYPES.keys()))
-        st.markdown("---")
-        st.write("### Instructions")
-        st.write("1. Select your target position & question type.\n2. Generate a question.\n3. Submit your answer for AI feedback.")
-
-    # Main interview interface
-    col1, col2 = st.columns([2, 1])
+# Sidebar configuration
+with st.sidebar:
+    st.header("🔧 Interview Setup")
+    selected_role = st.selectbox("Choose Your Role", JOB_ROLES, help="Select the position you're interviewing for")
+    experience_level = st.selectbox("Your Experience Level", EXPERIENCE_RANGES, help="Select your years of experience")
+    interview_type = st.selectbox("Interview Type", INTERVIEW_TYPES, help="Select the type of interview questions")
+    difficulty_level = st.selectbox("Question Difficulty", DIFFICULTY_LEVELS, help="Select the difficulty level of questions")
+    
+    # Interview controls
+    st.markdown("### 📊 Interview Controls")
+    col1, col2 = st.columns(2)
     with col1:
-        st.write(f"### Interview for {job_role} Position")
-
-        if st.button("Generate New Question"):
-            st.session_state.current_question = None
-            with st.spinner("Generating question..."):                st.session_state.current_question = generate_interview_question(
-                    model, job_role, question_type, experience
-                )
-
-        if st.session_state.current_question:
-            st.info(f"**Question:** {st.session_state.current_question}")
-            answer = st.text_area("Your Answer:", height=200, key=f"answer_{st.session_state.current_question}")
-
-            if st.button("Submit Answer"):
-                if not answer.strip():
-                    st.warning("Please provide an answer before submitting.")
-                else:
-                    with st.spinner("Analyzing your response..."):
-                        feedback = analyze_answer(model, job_role, st.session_state.current_question, answer)
-                        st.session_state.interview_history.append({
-                            'question': st.session_state.current_question, 'answer': answer, 'feedback': feedback
-                        })
-                        st.success("### Feedback Received!")
-                        sub_col1, sub_col2, sub_col3 = st.columns(3)
-                        sub_col1.metric("Overall Score", f"{feedback.get('score', 'N/A')}/10")
-                        sub_col2.metric("Technical", f"{feedback.get('technical_accuracy', 'N/A')}/10")
-                        sub_col3.metric("Clarity", f"{feedback.get('communication_clarity', 'N/A')}/10")
-                        st.write("**Strengths:**")
-                        for strength in feedback.get('strengths', []): st.write(f"✅ {strength}")
-                        st.write("\n**Areas for Improvement:**")
-                        for area in feedback.get('areas_for_improvement', []): st.write(f"📝 {area}")
-                        st.write("\n**Suggested Answer Snippet:**")
-                        st.info(feedback.get('suggested_answer', 'Not available.'))
-
+        if st.button("🔄 New Interview", use_container_width=True):
+            st.session_state.messages = []
+            st.session_state.session_stats = {
+                'total_questions': 0,
+                'technical_score': 0,
+                'communication_score': 0,
+                'role_specific_metrics': {}
+            }
+            st.rerun()
     with col2:
-        st.write("### Interview History")
-        if not st.session_state.interview_history:
-            st.caption("Your past questions in this session will appear here.")
-        for idx, item in enumerate(reversed(st.session_state.interview_history)):
-            with st.expander(f"Q{len(st.session_state.interview_history) - idx}: {item['question'][:40]}..."):
-                st.write("**Question:**", item['question'])
-                st.write("**Score:**", f"{item['feedback'].get('score', 'N/A')}/10")
-                st.write("**Your Answer:**", item['answer'])
+        if st.button("💾 Export History", use_container_width=True):
+            history_json = export_interview_history()
+            st.download_button(
+                "📥 Download History",
+                history_json,
+                "interview_history.json",
+                "application/json",
+                use_container_width=True
+            )
+    
+    # Display session statistics
+    st.markdown("### 📈 Session Progress")
+    metrics = st.session_state.session_stats.get('role_specific_metrics', {})
+    st.markdown(f"""
+        <div class="stat-box">
+            <b>Questions Asked:</b> {st.session_state.session_stats['total_questions']}<br>
+            <b>Domain Knowledge:</b> {metrics.get('domain_knowledge', 0):.1f}/10<br>
+            <b>Methodology:</b> {metrics.get('methodology_understanding', 0):.1f}/10<br>
+            <b>Practical Experience:</b> {metrics.get('practical_experience', 0):.1f}/10
+        </div>
+    """, unsafe_allow_html=True)
 
-if __name__ == "__main__":
-    main()
+def start_interview(role, experience, interview_type, difficulty):
+    """Start a new interview session with initial question."""
+    context = f"""As an interviewer for a {role} position with {experience} of experience, conducting a {interview_type.lower()} interview:
+1. Ask a thorough {interview_type.lower()} question at {difficulty.lower()} difficulty level
+2. Focus on {get_focus_points(interview_type, role)}
+3. Adjust depth and complexity based on difficulty:
+   - Easy: Basic concepts and fundamentals
+   - Medium: Applied knowledge and scenarios
+   - Hard: Complex problems and edge cases
+   - Legend: Expert-level challenges
+4. Match the question to {experience} experience level
+
+Format your response with just the question:
+Question: [Your detailed question here]
+
+Expected Answer: [Detailed model answer that will be shown after candidate responds]"""
+    
+    first_question = get_ai_response(context)
+    st.session_state.messages = [{"role": "assistant", "content": first_question}]
+
+# Display welcome message if no messages exist
+if not st.session_state.messages:
+    st.markdown(f"""
+        <div style="text-align: center; padding: 40px; background-color: #393939; border-radius: 6px; margin: 20px 0; border: 1px solid #464646;">
+            <h2 style="color: #E6E6E6;">👋 Welcome to Your Interview Session!</h2>
+            <p style="color: #E6E6E6;">Selected Role: <b>{selected_role}</b></p>
+            <p style="color: #E6E6E6;">Experience Level: <b>{experience_level}</b></p>
+            <p style="color: #E6E6E6;">Interview Type: <b>{interview_type}</b></p>
+            <p style="color: #E6E6E6;">I'll ask you relevant questions and provide detailed feedback.</p>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    # Center the start button
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        if st.button("🎯 Start Interview", use_container_width=True, type="primary"):
+            start_interview(selected_role, experience_level, interview_type, difficulty_level)
+            st.rerun()
+
+# Display interview conversation
+for i, message in enumerate(st.session_state.messages):
+    if message["role"] == "assistant":
+        # Split content to separate expected answer
+        content = message["content"]
+        if "Expected Answer:" in content:
+            parts = content.split("Expected Answer:", 1)
+            
+            # Show the question/feedback part
+            st.markdown(
+                f'<div class="interview-message interviewer-message">'
+                f'<b>👤 Interviewer:</b><br>{parts[0].strip()}'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+            
+            # Only show expected answer if this is not the latest question or user has responded
+            show_expected = (i < len(st.session_state.messages) - 1 or 
+                          (i == len(st.session_state.messages) - 1 and 
+                           i > 0 and st.session_state.messages[i-1]["role"] == "user"))
+            if show_expected:
+                st.markdown(
+                    f'<div class="interview-message interviewer-message">'
+                    f'<b>✓ Expected Answer:</b><br>{parts[1].strip()}'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
+        else:
+            # Message without expected answer
+            st.markdown(
+                f'<div class="interview-message interviewer-message">'
+                f'<b>👤 Interviewer:</b><br>{content}'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+    else:
+        # User message
+        st.markdown(
+            f'<div class="interview-message user-message">'
+            f'<b>💬 Your Response:</b><br>{message["content"]}'
+            f'</div>',
+            unsafe_allow_html=True
+        )
+
+
+
+# Input area for user responses
+if st.session_state.messages:  # Only show input if interview has started
+    if 'current_response' not in st.session_state:
+        st.session_state.current_response = ""
+      
+    # Get user input
+    prompt = st.text_input(
+        "Your Response",
+        placeholder="Type your answer here and press Enter",
+        key="response_input",
+        on_change=None
+    )
+    
+    # Only process if there's new input
+    if prompt and prompt != st.session_state.current_response:
+        st.session_state.current_response = prompt
+        
+        with st.spinner("Analyzing your response..."):
+            # Add user response to messages
+            st.session_state.messages.append({"role": "user", "content": prompt})
+            
+            # Prepare context for AI evaluation            # Prepare context for AI evaluation
+            context = f"""As an expert interviewer, evaluate this response:
+
+Role: {selected_role}
+Experience Level: {experience_level}
+Interview Type: {interview_type}
+Difficulty: {difficulty_level}
+
+Previous Conversation:
+{str(st.session_state.messages)}
+
+Evaluate the response with these criteria (score from 1-10):
+1. Technical Accuracy: Correctness and depth of technical knowledge
+2. Completeness: Coverage of key points and concepts
+3. Communication: Clarity, structure, and professionalism
+4. Best Practices: Adherence to industry standards
+5. Experience Match: Alignment with claimed experience level
+
+Provide your evaluation in this format:
+1. Technical Accuracy (X/10): Brief justification
+2. Completeness (X/10): Note coverage and gaps
+3. Communication (X/10): Comment on clarity
+4. Best Practices (X/10): Standards assessment
+5. Experience Match (X/10): Level alignment
+
+Summary:
+- Key Strengths: List 2-3 main strengths
+- Areas to Improve: List 1-2 specific areas
+- Overall Score: Average of all scores
+
+Follow-up Question:
+Ask a logically connected {difficulty_level} difficulty question.
+
+Expected Answer:
+Provide a concise model answer focusing on key points."""
+            
+            # Get AI response and update session state
+            response = get_ai_response(context)
+            st.session_state.messages.append({"role": "assistant", "content": response})
+            st.session_state.interview_history.append({
+                "timestamp": datetime.now().isoformat(),
+                "role": selected_role,
+                "experience": experience_level,
+                "interview_type": interview_type,
+                "question": prompt,
+                "response": response
+            })
+            
+            # Update statistics
+            st.session_state.session_stats['total_questions'] += 1
+            role_metrics = calculate_role_specific_metrics(
+                selected_role,
+                experience_level,
+                st.session_state.messages
+            )
+            st.session_state.session_stats['role_specific_metrics'] = role_metrics
+            
+            # Use rerun only once after processing is complete
+            st.rerun()
