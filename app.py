@@ -2,178 +2,186 @@ import streamlit as st
 import google.generativeai as genai
 import os
 from dotenv import load_dotenv
+from typing import Optional, Dict, Any
+import json
 
-# --- Streamlit Page Configuration (MUST BE FIRST STREAMLIT COMMAND) ---
-st.set_page_config(page_title="AI Interview Assistant", page_icon="🤖")
+# --- Constants ---
+JOB_ROLES = [
+    "Software Engineer", "Data Scientist", "Product Manager",
+    "Full Stack Developer", "AI/ML Engineer", "DevOps Engineer",
+    "QA Engineer", "Automation Test Engineer", "SDET",
+    "Performance Test Engineer"
+]
 
-# --- Global Variables ---
-MODEL_TO_USE = None
-MODEL_INSTANCE = None
-SDK_VERSION_DISPLAYED = False
+EXPERIENCE_RANGES = [
+    "0-2 years", "2-5 years", "5-8 years", "8+ years"
+]
 
-def initialize_ai_model():
-    global MODEL_TO_USE, MODEL_INSTANCE, SDK_VERSION_DISPLAYED
+QUESTION_TYPES = {
+    "technical": "Generate a technical question that tests specific knowledge and problem-solving skills.",
+    "behavioral": "Generate a behavioral question that assesses past experiences and soft skills.",
+    "problem_solving": "Generate a problem-solving question that evaluates analytical thinking."
+}
 
-    if not SDK_VERSION_DISPLAYED:
-        st.sidebar.caption(f"SDK: google-generativeai v{genai.__version__}")
-        print(f"CONSOLE: Using google-generativeai SDK version: {genai.__version__}")
-        SDK_VERSION_DISPLAYED = True
+# --- Model Configuration ---
+# In your main streamlit app file
 
+def initialize_ai_model() -> Optional[genai.GenerativeModel]:
+    """Initialize and configure the Gemini AI model."""
     load_dotenv()
     api_key = os.getenv('GOOGLE_API_KEY')
 
     if not api_key:
         st.error("🔴 API key (GOOGLE_API_KEY) not found. Check your .env file.")
-        return False
+        return None
 
     try:
         genai.configure(api_key=api_key)
-        print("CONSOLE: Gemini API configured successfully.")
-
-        # --- Model Selection for Hackathon ---
-        # Prioritize Flash for potentially better free-tier performance
-        hackathon_model_priority = [
-            "models/gemini-1.5-flash-latest",
-            "models/gemini-1.5-pro-latest"
-        ]
         
-        available_models_for_generation = []
-        print("\nCONSOLE: Checking available models...")
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                available_models_for_generation.append(m.name)
-                print(f"CONSOLE: - Found model supporting generateContent: {m.name}")
-
-        selected_model_name = None
-        for model_name_option in hackathon_model_priority:
-            if model_name_option in available_models_for_generation:
-                selected_model_name = model_name_option
-                break
+        # --- THE FINAL FIX ---
+        # Use the powerful Gemini 1.5 Pro model that your key has access to.
+        model = genai.GenerativeModel('gemini-1.5-flash-latest') 
         
-        if not selected_model_name and available_models_for_generation: # Fallback if preferred not found
-            selected_model_name = available_models_for_generation[0]
-            st.warning(f"⚠️ Preferred hackathon models not found. Using first available: {selected_model_name}")
-
-
-        if selected_model_name:
-            MODEL_TO_USE = selected_model_name
-            MODEL_INSTANCE = genai.GenerativeModel(MODEL_TO_USE)
-            st.success(f"✅ AI Model Ready: Using **`{MODEL_TO_USE}`**")
-            print(f"CONSOLE: Successfully created model instance for: {MODEL_TO_USE}")
-            return True
-        else:
-            st.error("🔴 No suitable generative models found from your available list.")
-            print("CONSOLE: No suitable generative models found that support 'generateContent'.")
-            return False
-
+        return model
     except Exception as e:
         st.error(f"🔴 Error during AI Model setup: {str(e)}")
-        st.error("Troubleshooting: Check API key, 'Generative Language API' in GCP, SDK version. For quota errors, try again in a minute.")
-        print(f"CONSOLE: Error during Gemini API setup or model instantiation: {str(e)}")
-        return False
+        st.error("Troubleshooting: Check API key, 'Generative Language API' in GCP, SDK version.")
+        return None
 
-# --- Initialize AI Model on App Start ---
-model_ready = initialize_ai_model()
+def generate_interview_question(model: genai.GenerativeModel, job_role: str, question_type: str, experience: str) -> str:
+    """Generate an interview question based on job role, type, and experience level."""
+    prompt = f"""Generate a {question_type} interview question for a {job_role} position with {experience} of experience.
+    The question should:
+    1. Match the experience level ({experience})
+    2. Be specific to the role and requirements
+    3. Test both knowledge and application
+    4. Be clear and concise
+    5. Encourage detailed responses
+    Question type context: {QUESTION_TYPES[question_type]}
+    Return only the question text, with no introductory phrases."""
 
-# --- UI and App Logic ---
-st.title("🤖 AI Interview Assistant")
-
-if not model_ready:
-    st.warning("⚠️ AI Model could not be initialized. Please check errors above and ensure your API key is set up correctly.")
-    st.stop()
-
-# Sidebar
-with st.sidebar:
-    st.header("Interview Settings")
-    if MODEL_TO_USE:
-        st.caption(f"Active AI Model: `{MODEL_TO_USE}`")
-    
-    role = st.text_input("Job Role", "Software Engineer")
-    field = st.text_input("Field/Industry", "Technology")
-
-    if 'interview_started' not in st.session_state:
-        st.session_state.interview_started = False
-    if 'chat_history' not in st.session_state:
-        st.session_state.chat_history = []
-
-    if not st.session_state.interview_started:
-        if st.button("Start Interview"):
-            st.session_state.interview_started = True
-            st.session_state.chat_history = [] # Reset history
-            st.rerun()
-    elif st.button("End Interview & Reset"):
-        st.session_state.interview_started = False
-        st.session_state.chat_history = []
-        st.rerun()
-
-def get_ai_response(role_val, field_val, question_val, answer_val):
-    global MODEL_INSTANCE, MODEL_TO_USE
-    if not MODEL_INSTANCE:
-        return "Error: AI Model not initialized."
-
-    prompt = f"""As an expert interviewer for {role_val} positions in {field_val}, evaluate this answer.
-    Question: {question_val}
-    Candidate's Answer: {answer_val}
-    
-    Provide feedback in the following format:
-    1. Score (1-10): Rate the answer
-    2. Strengths: What was good about the answer
-    3. Areas for Improvement: What could be better
-    4. Better Answer Example: A sample improved answer
-    """
     try:
-        with st.spinner(f"🤖 AI ({MODEL_TO_USE.split('/')[-1]}) is thinking..."): # Shorter model name
-            response = MODEL_INSTANCE.generate_content(prompt)
+        response = model.generate_content(prompt)
         return response.text
-    except Exception as e_gen:
-        error_message = f"Error getting AI response: {str(e_gen)}"
-        st.error(f"🔴 {error_message}")
-        print(f"CONSOLE: {error_message}")
-        if "429" in str(e_gen) or "quota" in str(e_gen).lower():
-            return f"Error: API Quota Exceeded for {MODEL_TO_USE}. Please wait a minute and try again. (Hackathon Free Tier Limit)"
-        return error_message
+    except Exception as e:
+        st.error(f"Error generating question: {str(e)}")
+        return "Failed to generate question. Please try again."
 
-# Main Interview Interface
-if st.session_state.interview_started:
-    questions_db = {
-        "Software Engineer": [
-            "Explain a challenging project you worked on and how you solved problems.",
-            "How do you keep up with new technologies and trends?",
-            "Describe a time when you had to deal with a difficult team member."
-        ],
-        "Data Scientist": [
-            "Explain a complex data analysis to a non-technical person.",
-            "How do you handle missing or incomplete data?",
-            "Describe a project where you applied machine learning."
-        ]
+def analyze_answer(model: genai.GenerativeModel, job_role: str, question: str, answer: str) -> Dict[str, Any]:
+    """Analyze interview answer and provide feedback safely using JSON."""
+    prompt = f"""Analyze this interview answer for a {job_role} position.
+    Question: {question}
+    Answer: {answer}
+    Provide feedback as a valid JSON object. Do not include markdown formatting like ```json.
+    Your entire response should be only the JSON object, structured as follows:
+    {{
+        "score": <integer from 1 to 10>,
+        "strengths": ["<strength 1>", "<strength 2>"],
+        "areas_for_improvement": ["<area 1>", "<area 2>"],
+        "suggested_answer": "<a brief example of a strong answer>",
+        "technical_accuracy": <integer from 1 to 10>,
+        "communication_clarity": <integer from 1 to 10>
+    }}"""
+
+    error_feedback = {
+        "score": 0, "strengths": ["Analysis failed"],
+        "areas_for_improvement": ["Please try again"],
+        "suggested_answer": "Analysis unavailable", "technical_accuracy": 0, "communication_clarity": 0
     }
-    available_questions = questions_db.get(role, questions_db["Software Engineer"])
-    question = st.selectbox("Practice Question:", available_questions, key="current_question")
-    answer = st.text_area("Your Answer:", height=150, key="current_answer")
 
-    if st.button("Get Feedback"):
-        if answer.strip():
-            feedback = get_ai_response(role, field, question, answer)
-            st.session_state.chat_history.append({
-                "question": question,
-                "answer": answer,
-                "feedback": feedback
-            })
-            st.rerun()
-        else:
-            st.warning("Please provide an answer first.")
+    try:
+        response = model.generate_content(prompt)
+        text_response = response.text
+        cleaned_text = text_response.strip().replace("```json", "").replace("```", "")
+        return json.loads(cleaned_text)
+    except json.JSONDecodeError as e:
+        st.error(f"Error parsing JSON from model: {e}")
+        st.error(f"Model's raw response was: {text_response}")
+        return error_feedback
+    except Exception as e:
+        st.error(f"Error analyzing answer: {str(e)}")
+        return error_feedback
 
-    if st.session_state.chat_history:
-        st.subheader("Interview Progress")
-        for i, interaction in enumerate(reversed(st.session_state.chat_history)):
-            with st.expander(f"Interaction {len(st.session_state.chat_history) - i}: {interaction['question'][:50]}...", expanded=(i==0)):
-                st.markdown(f"**Question:** {interaction['question']}")
-                st.markdown(f"**Your Answer:**\n```\n{interaction['answer']}\n```")
-                st.markdown(f"**AI Feedback:**\n{interaction['feedback']}")
-else:
-    if model_ready:
-        st.info("👈 Set job details & click 'Start Interview' to begin practicing!")
+# --- Main Application ---
+def main():
+    # Page Configuration
+    st.set_page_config(
+        page_title="AI Interview Assistant",
+        page_icon="🤖",
+        layout="wide"
+    )
+    st.title("🤖 AI Interview Assistant")
 
-# Footer
-st.markdown("---")
-st.markdown("Hackathon AI Interview Practice Tool")
+    # --- DIAGNOSTIC BLOCK ---
+    # This will show us exactly which version of the library is being used.
+    st.info(f"**Running `google-generativeai` version:** `{genai.__version__}`")
+    # --- END OF DIAGNOSTIC BLOCK ---
+
+    # Initialize components
+    model = initialize_ai_model()
+    if not model:
+        st.warning("⚠️ Please set up your API key in the .env file to continue.")
+        st.stop()
+
+    # Initialize session state
+    if 'current_question' not in st.session_state:
+        st.session_state.current_question = None
+    if 'interview_history' not in st.session_state:
+        st.session_state.interview_history = []    # Sidebar configuration
+    with st.sidebar:
+        st.header("Interview Settings")
+        job_role = st.selectbox("Select Position", JOB_ROLES)
+        experience = st.selectbox("Years of Experience", EXPERIENCE_RANGES)
+        question_type = st.selectbox("Question Type", list(QUESTION_TYPES.keys()))
+        st.markdown("---")
+        st.write("### Instructions")
+        st.write("1. Select your target position & question type.\n2. Generate a question.\n3. Submit your answer for AI feedback.")
+
+    # Main interview interface
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        st.write(f"### Interview for {job_role} Position")
+
+        if st.button("Generate New Question"):
+            st.session_state.current_question = None
+            with st.spinner("Generating question..."):                st.session_state.current_question = generate_interview_question(
+                    model, job_role, question_type, experience
+                )
+
+        if st.session_state.current_question:
+            st.info(f"**Question:** {st.session_state.current_question}")
+            answer = st.text_area("Your Answer:", height=200, key=f"answer_{st.session_state.current_question}")
+
+            if st.button("Submit Answer"):
+                if not answer.strip():
+                    st.warning("Please provide an answer before submitting.")
+                else:
+                    with st.spinner("Analyzing your response..."):
+                        feedback = analyze_answer(model, job_role, st.session_state.current_question, answer)
+                        st.session_state.interview_history.append({
+                            'question': st.session_state.current_question, 'answer': answer, 'feedback': feedback
+                        })
+                        st.success("### Feedback Received!")
+                        sub_col1, sub_col2, sub_col3 = st.columns(3)
+                        sub_col1.metric("Overall Score", f"{feedback.get('score', 'N/A')}/10")
+                        sub_col2.metric("Technical", f"{feedback.get('technical_accuracy', 'N/A')}/10")
+                        sub_col3.metric("Clarity", f"{feedback.get('communication_clarity', 'N/A')}/10")
+                        st.write("**Strengths:**")
+                        for strength in feedback.get('strengths', []): st.write(f"✅ {strength}")
+                        st.write("\n**Areas for Improvement:**")
+                        for area in feedback.get('areas_for_improvement', []): st.write(f"📝 {area}")
+                        st.write("\n**Suggested Answer Snippet:**")
+                        st.info(feedback.get('suggested_answer', 'Not available.'))
+
+    with col2:
+        st.write("### Interview History")
+        if not st.session_state.interview_history:
+            st.caption("Your past questions in this session will appear here.")
+        for idx, item in enumerate(reversed(st.session_state.interview_history)):
+            with st.expander(f"Q{len(st.session_state.interview_history) - idx}: {item['question'][:40]}..."):
+                st.write("**Question:**", item['question'])
+                st.write("**Score:**", f"{item['feedback'].get('score', 'N/A')}/10")
+                st.write("**Your Answer:**", item['answer'])
+
+if __name__ == "__main__":
+    main()
