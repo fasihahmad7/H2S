@@ -1,185 +1,250 @@
 import google.generativeai as genai
 import json
 from typing import Dict, List, Optional, Any
-import numpy as np
 
 class InterviewAnalyzer:
     def __init__(self, model):
         self.model = model
         self.performance_weights = {
-            'verbal_content': 0.4,
-            'non_verbal': 0.3,
-            'voice_quality': 0.3
-        }
-        
-    def _analyze_non_verbal_cues(self, video_metrics: Dict[str, Any]) -> Dict[str, Any]:
-        """Analyze non-verbal communication aspects."""
-        if not video_metrics:
-            return {
-                'score': 0,
-                'feedback': 'No video analysis available'
-            }
-            
-        attention_score = np.mean(video_metrics.get('attention_scores', [0]))
-        eye_contact_score = np.mean(video_metrics.get('eye_contact_scores', [0]))
-        confidence_score = np.mean(video_metrics.get('confidence_scores', [0]))
-        
-        non_verbal_score = (attention_score + eye_contact_score + confidence_score) / 3
-        
-        feedback = []
-        if attention_score < 0.7:
-            feedback.append("Work on maintaining consistent focus during the interview")
-        if eye_contact_score < 0.7:
-            feedback.append("Improve eye contact with the camera")
-        if confidence_score < 0.7:
-            feedback.append("Display more confident body language and posture")
-            
-        return {
-            'score': non_verbal_score,
-            'feedback': feedback if feedback else ['Good non-verbal communication']
-        }
-    
-    def _analyze_voice_qualities(self, audio_metrics: Dict[str, Any]) -> Dict[str, Any]:
-        """Analyze voice and speech patterns."""
-        if not audio_metrics:
-            return {
-                'score': 0,
-                'feedback': 'No audio analysis available'
-            }
-            
-        clarity_score = np.mean(audio_metrics.get('clarity_score', [0]))
-        avg_wpm = np.mean(audio_metrics.get('words_per_minute', [0]))
-        filler_ratio = sum(audio_metrics.get('filler_words', [0])) / max(len(audio_metrics.get('filler_words', [1])), 1)
-        
-        # Score calculations
-        clarity_weight = 0.4
-        pace_weight = 0.3
-        filler_weight = 0.3
-        
-        pace_score = 1.0 - min(abs(avg_wpm - 135) / 50, 1.0)  # Optimal WPM around 135
-        filler_score = 1.0 - min(filler_ratio, 1.0)
-        
-        voice_score = (clarity_score * clarity_weight + 
-                      pace_score * pace_weight + 
-                      filler_score * filler_weight)
-        
-        feedback = []
-        if clarity_score < 0.7:
-            feedback.append("Work on speaking more clearly and distinctly")
-        if pace_score < 0.7:
-            feedback.append(f"Adjust speaking pace (currently {avg_wpm:.0f} WPM, aim for 120-150 WPM)")
-        if filler_score < 0.7:
-            feedback.append("Reduce use of filler words (um, uh, like, etc.)")
-            
-        return {
-            'score': voice_score,
-            'feedback': feedback if feedback else ['Good voice quality and speech patterns']
+            'content': 0.5,
+            'technical': 0.3,
+            'experience_match': 0.2
         }
         
     def analyze_response(self, 
                         job_role: str, 
                         question: str, 
-                        answer: str, 
-                        video_metrics: Optional[Dict[str, Any]] = None, 
-                        audio_metrics: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+                        answer: str,
+                        experience_level: str) -> Dict[str, Any]:
         """
-        Comprehensive analysis of interview response combining verbal content,
-        non-verbal cues, and voice qualities.
+        Analyze interview response with enhanced role-specific scoring.
         """
-        # Analyze non-verbal aspects
-        non_verbal_analysis = self._analyze_non_verbal_cues(video_metrics)
+        # Role-specific evaluation criteria with detailed competencies
+        role_criteria = {
+            "Software Engineer": {
+                "technical_depth": {
+                    "weight": 0.4,
+                    "key_aspects": ["algorithms", "data structures", "system design", "coding practices"]
+                },
+                "problem_solving": {
+                    "weight": 0.3,
+                    "key_aspects": ["analytical thinking", "optimization", "edge cases", "scalability"]
+                },
+                "best_practices": {
+                    "weight": 0.3,
+                    "key_aspects": ["clean code", "testing", "documentation", "security"]
+                }
+            },
+            "Data Scientist": {
+                "analytical_thinking": {
+                    "weight": 0.4,
+                    "key_aspects": ["statistical analysis", "data preprocessing", "feature engineering", "model evaluation"]
+                },
+                "technical_knowledge": {
+                    "weight": 0.3,
+                    "key_aspects": ["machine learning", "deep learning", "data visualization", "big data"]
+                },
+                "research_methodology": {
+                    "weight": 0.3,
+                    "key_aspects": ["experiment design", "hypothesis testing", "validation methods", "literature review"]
+                }
+            },
+            "Functional Tester": {
+                "test_methodology": {
+                    "weight": 0.4,
+                    "key_aspects": ["test planning", "test case design", "defect lifecycle", "test coverage"]
+                },
+                "quality_mindset": {
+                    "weight": 0.3,
+                    "key_aspects": ["attention to detail", "risk assessment", "user perspective", "quality standards"]
+                },
+                "technical_understanding": {
+                    "weight": 0.3,
+                    "key_aspects": ["testing tools", "automation concepts", "test environments", "debugging"]
+                }
+            }
+        }
         
-        # Analyze voice qualities
-        voice_analysis = self._analyze_voice_qualities(audio_metrics)
+        # Enhanced experience-based expectations with detailed criteria
+        exp_expectations = {
+            "0-2 years": {
+                "base_score": 6.0,
+                "threshold": 0.7,
+                "criteria": {
+                    "technical_depth": "Basic understanding of core concepts",
+                    "practical_skills": "Able to handle basic tasks with guidance",
+                    "independence": "Requires regular supervision"
+                }
+            },
+            "2-5 years": {
+                "base_score": 7.0,
+                "threshold": 0.75,
+                "criteria": {
+                    "technical_depth": "Good understanding of advanced concepts",
+                    "practical_skills": "Can handle moderate complexity independently",
+                    "independence": "Occasional guidance needed"
+                }
+            },
+            "5-8 years": {
+                "base_score": 8.0,
+                "threshold": 0.8,
+                "criteria": {
+                    "technical_depth": "Deep understanding of complex topics",
+                    "practical_skills": "Handles complex tasks effectively",
+                    "independence": "Works independently, guides others"
+                }
+            },
+            "8+ years": {
+                "base_score": 8.5,
+                "threshold": 0.85,
+                "criteria": {
+                    "technical_depth": "Expert-level understanding",
+                    "practical_skills": "Tackles challenging problems innovatively",
+                    "independence": "Strategic thinking, mentors others"
+                }
+            }
+        }
         
-        # Prepare detailed context for AI analysis
-        prompt = f"""As an expert interviewer for {job_role} positions, provide a comprehensive evaluation of this interview response.
+        # Get role-specific criteria with fallback to generic criteria
+        role_weights = role_criteria.get(job_role, {
+            "general_knowledge": {
+                "weight": 0.4,
+                "key_aspects": ["domain knowledge", "industry awareness", "technical fundamentals"]
+            },
+            "communication": {
+                "weight": 0.3,
+                "key_aspects": ["clarity", "structure", "professionalism"]
+            },
+            "experience": {
+                "weight": 0.3,
+                "key_aspects": ["practical application", "problem handling", "decision making"]
+            }
+        })
+        
+        # Get experience expectations
+        exp_expect = exp_expectations.get(experience_level, exp_expectations["0-2 years"])
+        
+        # Enhanced prompt for more accurate analysis
+        prompt = f"""As an expert technical interviewer for {job_role} positions with {experience_level} experience expectation, provide a detailed evaluation of this response.
 
 Question: {question}
-Verbal Answer: {answer}
+Answer: {answer}
 
-Non-verbal Analysis:
-- Attention Score: {video_metrics.get('attention_score', 'N/A')}
-- Eye Contact Score: {video_metrics.get('eye_contact_score', 'N/A')}
-- Confidence Score: {video_metrics.get('confidence_score', 'N/A')}
+Experience Level Expectations:
+{json.dumps(exp_expect['criteria'], indent=2)}
 
-Voice Analysis:
-- Clarity Score: {audio_metrics.get('avg_clarity', 'N/A')}
-- Speaking Pace: {audio_metrics.get('avg_wpm', 'N/A')} WPM
-- Filler Words Used: {audio_metrics.get('total_fillers', 'N/A')}
+Role-Specific Evaluation Criteria:
+{json.dumps(role_weights, indent=2)}
 
-Provide a detailed evaluation in JSON format:
+Evaluate thoroughly and provide output in this JSON format:
 {{
     "content_analysis": {{
         "relevance_score": (1-10),
         "clarity_score": (1-10),
         "structure_score": (1-10),
-        "strengths": ["point1", "point2", ...],
-        "improvements": ["point1", "point2", ...],
-        "example_better_answer": "concise example of an improved answer"
-    }},
-    "delivery_feedback": {{
-        "body_language": ["specific points about posture, expressions, etc."],
-        "voice_qualities": ["specific points about tone, pace, clarity, etc."],
-        "overall_presence": "analysis of professional presence"
+        "strengths": ["detailed strength points"],
+        "improvements": ["specific improvement areas"],
+        "example_better_answer": "concise improved answer example"
     }},
     "technical_assessment": {{
         "knowledge_depth": (1-10),
         "practical_understanding": (1-10),
-        "problem_solving": (1-10)
+        "problem_solving": (1-10),
+        "specific_feedback": ["detailed technical feedback points"]
     }},
-    "category": "technical|behavioral|communication",
-    "overall_impression": "summary of the complete evaluation"
-}}
-"""
+    "experience_level_assessment": {{
+        "meets_expectations": boolean,
+        "gap_analysis": ["specific gaps compared to experience level"],
+        "recommendations": ["targeted improvement suggestions"],
+        "alignment_score": (1-10)
+    }},
+    "role_specific_evaluation": {{
+        "strengths": ["role-specific strong points"],
+        "areas_to_improve": ["role-specific improvement areas"],
+        "key_competencies_rating": (1-10)
+    }},
+    "overall_impression": "comprehensive evaluation summary"
+}}"""
         
         try:
+            # Get AI evaluation
             response = self.model.generate_content(prompt)
             ai_feedback = json.loads(response.text)
             
-            # Calculate weighted final score
-            content_score = (ai_feedback['content_analysis']['relevance_score'] + 
-                           ai_feedback['content_analysis']['clarity_score'] + 
-                           ai_feedback['content_analysis']['structure_score']) / 3
-            
-            final_score = (
-                content_score * self.performance_weights['verbal_content'] +
-                non_verbal_analysis['score'] * self.performance_weights['non_verbal'] +
-                voice_analysis['score'] * self.performance_weights['voice_quality']
+            # Enhanced content score calculation with weighted components
+            content_score = (
+                ai_feedback['content_analysis']['relevance_score'] * 0.4 +
+                ai_feedback['content_analysis']['clarity_score'] * 0.3 +
+                ai_feedback['content_analysis']['structure_score'] * 0.3
             )
             
-            # Combine all feedback
+            # Apply dynamic experience-level threshold
+            if content_score < exp_expect['base_score']:
+                content_score = max(
+                    content_score * exp_expect['threshold'],
+                    exp_expect['base_score'] - 2.0
+                )
+            
+            # Enhanced technical score calculation using role-specific weights
+            tech_score = sum(
+                ai_feedback['technical_assessment'][metric] * weight
+                for metric, weight in [
+                    ('knowledge_depth', 0.4),
+                    ('practical_understanding', 0.3),
+                    ('problem_solving', 0.3)
+                ]
+            )
+            
+            # Calculate experience alignment score
+            exp_alignment_score = ai_feedback['experience_level_assessment']['alignment_score']
+            
+            # Calculate final score with all components
+            final_score = (
+                content_score * self.performance_weights['content'] +
+                tech_score * self.performance_weights['technical'] +
+                exp_alignment_score * self.performance_weights['experience_match']
+            ) * exp_expect['threshold']
+            
+            # Apply experience-based bounds
+            final_score = min(final_score, exp_expect['base_score'] + 1.5)
+            final_score = max(final_score, exp_expect['base_score'] - 2.0)
+            
             return {
-                "score": final_score,
+                "score": round(final_score, 1),
                 "content_analysis": ai_feedback['content_analysis'],
-                "delivery_feedback": {
-                    **ai_feedback['delivery_feedback'],
-                    "non_verbal_feedback": non_verbal_analysis['feedback'],
-                    "voice_feedback": voice_analysis['feedback']
-                },
                 "technical_assessment": ai_feedback['technical_assessment'],
-                "category": ai_feedback['category'],
+                "experience_level_assessment": ai_feedback['experience_level_assessment'],
+                "role_specific_evaluation": ai_feedback['role_specific_evaluation'],
                 "overall_impression": ai_feedback['overall_impression']
             }
             
         except Exception as e:
+            # Enhanced error handling with more specific feedback
+            error_type = type(e).__name__
+            error_msg = str(e)
             return {
-                "score": 5.0,
+                "score": exp_expect['base_score'] - 2.0,
                 "content_analysis": {
-                    "strengths": ["Unable to analyze completely"],
-                    "improvements": ["Technical error in analysis"],
-                    "example_better_answer": "Analysis unavailable"
-                },
-                "delivery_feedback": {
-                    "body_language": non_verbal_analysis['feedback'],
-                    "voice_feedback": voice_analysis['feedback'],
-                    "overall_presence": "Analysis incomplete due to technical error"
+                    "strengths": ["Analysis incomplete"],
+                    "improvements": [f"Technical error occurred: {error_type}"],
+                    "example_better_answer": "Analysis unavailable due to error"
                 },
                 "technical_assessment": {
-                    "knowledge_depth": 5,
-                    "practical_understanding": 5,
-                    "problem_solving": 5
+                    "knowledge_depth": exp_expect['base_score'] - 2.0,
+                    "practical_understanding": exp_expect['base_score'] - 2.0,
+                    "problem_solving": exp_expect['base_score'] - 2.0,
+                    "specific_feedback": [f"Error details: {error_msg}"]
                 },
-                "category": "error",
-                "overall_impression": "Analysis incomplete due to technical error"
+                "experience_level_assessment": {
+                    "meets_expectations": False,
+                    "gap_analysis": ["Assessment interrupted due to technical error"],
+                    "recommendations": ["Please try again or contact support if error persists"],
+                    "alignment_score": exp_expect['base_score'] - 2.0
+                },
+                "role_specific_evaluation": {
+                    "strengths": [],
+                    "areas_to_improve": ["Could not complete role-specific evaluation"],
+                    "key_competencies_rating": exp_expect['base_score'] - 2.0
+                },
+                "overall_impression": f"Analysis incomplete due to error: {error_type}"
             }

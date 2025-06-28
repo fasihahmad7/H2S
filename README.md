@@ -2,6 +2,9 @@
 
 An intelligent interview preparation tool powered by Google's Gemini AI that provides real-time feedback on interview responses and helps you improve your interview skills.
 
+## Demo
+Watch the demo on YouTube: [AI Interview Assistant Demo](https://youtu.be/2btoXXkE9K0)
+
 ## Features
 
 - 🤖 AI-powered interview questions generation
@@ -56,4 +59,4 @@ ai_interview_assistant/
 
 - Response Quality: Evaluates the completeness and relevance of your answers
 - Technical Accuracy: Assesses the correctness of technical responses
-- Communication Clarity: Analyzes the structure and clarity of your responses
+- Communication Structure: Analyzes the organization and clarity of your written responses

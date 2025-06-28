@@ -5,189 +5,172 @@ import pandas as pd
 from datetime import datetime, timedelta
 from typing import Dict, List, Any
 from ..database.db_manager import DatabaseManager
+from ..utils.config import ROLE_CRITERIA, EXPERIENCE_CRITERIA
 
 class Dashboard:
     def __init__(self):
         self.db = DatabaseManager()
         
-    def _create_radar_chart(self, performance_data: Dict[str, float]):
-        categories = ['Attention', 'Eye Contact', 'Speech Clarity',
-                     'Confidence', 'Body Language']
+    def _create_radar_chart(self, performance_data: Dict[str, float], role: str):
+        """Create role-specific radar chart."""
+        role_info = ROLE_CRITERIA.get(role, ROLE_CRITERIA["Software Engineer"])
+        
+        categories = (
+            role_info['core_skills'][:3] +  # Top 3 core skills
+            role_info['practices'][:2] +    # Top 2 practices
+            role_info['soft_skills']        # All soft skills
+        )
+        
         values = [
-            performance_data['attention'],
-            performance_data['eye_contact'],
-            performance_data['speech_clarity'],
-            performance_data['confidence'],
-            performance_data['body_language']
+            performance_data.get(cat.lower().replace(" ", "_"), 0)
+            for cat in categories
         ]
         
-        fig = go.Figure(data=[
-            go.Scatterpolar(
-                r=values,
-                theta=categories,
-                fill='toself',
-                name='Current Performance'
-            )
-        ])
+        fig = go.Figure(data=go.Scatterpolar(
+            r=values,
+            theta=categories,
+            fill='toself',
+            name=role
+        ))
         
         fig.update_layout(
             polar=dict(
                 radialaxis=dict(
                     visible=True,
-                    range=[0, 1]
-                )),
-            showlegend=False
+                    range=[0, 10]
+                )
+            ),
+            showlegend=False,
+            title=f"{role} Performance Metrics"
         )
-        
         return fig
     
-    def _create_trend_chart(self, history: List[Dict[str, Any]]):
-        df = pd.DataFrame(history)
-        df['timestamp'] = pd.to_datetime(df['timestamp'])
+    def _create_progress_chart(self, history_data: List[Dict[str, Any]]):
+        """Create progress over time chart with trend lines."""
+        if not history_data:
+            return None
+            
+        df = pd.DataFrame(history_data)
+        df['date'] = pd.to_datetime(df['timestamp'])
+        df = df.sort_values('date')
         
-        fig = go.Figure()
-        metrics = ['attention_score', 'eye_contact_score', 'speech_clarity_score',
-                  'confidence_score', 'body_language_score']
+        # Calculate moving averages
+        df['technical_ma'] = df['technical_score'].rolling(window=3, min_periods=1).mean()
+        df['communication_ma'] = df['communication_score'].rolling(window=3, min_periods=1).mean()
         
-        for metric in metrics:
-            fig.add_trace(go.Scatter(
-                x=df['timestamp'],
-                y=df[metric],
-                name=metric.replace('_score', '').title(),
-                mode='lines+markers'
-            ))
+        fig = px.line(df, x='date', 
+                     y=['technical_score', 'communication_score', 'technical_ma', 'communication_ma'],
+                     title='Performance Trends',
+                     labels={
+                         'technical_score': 'Technical',
+                         'communication_score': 'Communication',
+                         'technical_ma': 'Technical (Trend)',
+                         'communication_ma': 'Communication (Trend)'
+                     })
         
         fig.update_layout(
-            title='Performance Trends',
-            xaxis_title='Interview Date',
-            yaxis_title='Score',
-            yaxis=dict(range=[0, 1])
+            xaxis_title="Interview Date",
+            yaxis_title="Score",
+            hovermode='x unified'
         )
-        
         return fig
-        
-    def show_performance_metrics(self, user_id):
-        st.title("Interview Performance Dashboard")
-        
-        # Get performance data
-        performance_summary = self.db.get_performance_summary(user_id)
-        performance_history = self.db.get_performance_history(user_id, limit=10)
-        stats = self.db.get_user_statistics(user_id)
-        
-        # Display overall statistics
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Total Interviews", stats['total_interviews'])
-        with col2:
-            st.metric("Average Score", f"{stats['avg_score']:.1%}")
-        with col3:
-            st.metric("Practice Time", f"{stats['total_time']:.1f} hours")
-            
-        # Display radar chart for overall performance
-        st.subheader("Performance Overview")
-        if performance_summary:
-            radar_chart = self._create_radar_chart(performance_summary)
-            st.plotly_chart(radar_chart, use_container_width=True)
-        else:
-            st.info("Complete more interviews to see your performance overview!")
-            
-        # Display trend chart
-        st.subheader("Performance Trends")
-        if performance_history:
-            trend_chart = self._create_trend_chart(performance_history)
-            st.plotly_chart(trend_chart, use_container_width=True)
-        else:
-            st.info("Complete more interviews to see your performance trends!")
-            
-        # Show recommendations
-        self.show_recommendations(user_id)
-        
-    def show_statistics(self, user_id):
-        st.subheader("Detailed Statistics")
-        
-        # Get detailed interview data
-        interviews = self.db.get_user_interviews(user_id)
-        if not interviews:
-            st.info("No interview data available yet. Complete some interviews to see your statistics!")
+    
+    def display_metrics(self, user_id: str, role: str):
+        """Display enhanced performance metrics dashboard."""
+        recent_interviews = self.db.get_recent_interviews(user_id, limit=5)
+        if not recent_interviews:
+            st.info("No interview data available yet. Complete some interviews to see your progress!")
             return
-            
-        df = pd.DataFrame(interviews)
         
-        # Category performance
-        st.write("### Performance by Category")
-        category_scores = df.groupby('category')['score'].agg(['mean', 'count']).round(3)
-        category_scores.columns = ['Average Score', 'Number of Interviews']
-        st.dataframe(category_scores)
+        # Performance Overview
+        st.subheader("📊 Performance Overview")
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            # Radar chart
+            metrics = self._calculate_role_metrics(recent_interviews, role)
+            radar_chart = self._create_radar_chart(metrics, role)
+            st.plotly_chart(radar_chart, use_container_width=True)
+            
+        with col2:
+            # Summary metrics
+            st.markdown("### Key Metrics")
+            self._display_summary_metrics(metrics)
         
         # Progress over time
-        st.write("### Progress Over Time")
-        fig_progress = px.line(df, 
-                             x='date', 
-                             y='score',
-                             title='Score Progression',
-                             labels={'date': 'Interview Date', 'score': 'Score'})
-        st.plotly_chart(fig_progress)
+        st.subheader("📈 Progress Analysis")
+        col1, col2 = st.columns([3, 1])
         
-        # Recent activity
-        st.write("### Recent Activity")
-        recent = df.nlargest(5, 'date')[['date', 'job_role', 'question', 'score']]
-        for _, row in recent.iterrows():
-            with st.expander(f"{row['date'][:10]} - {row['job_role']}"):
-                st.write(f"**Question:** {row['question']}")
-                st.write(f"**Score:** {row['score']:.2%}")
+        with col1:
+            progress_chart = self._create_progress_chart(recent_interviews)
+            if progress_chart:
+                st.plotly_chart(progress_chart, use_container_width=True)
+                
+        with col2:
+            st.markdown("### Improvement Areas")
+            self._display_improvement_suggestions(metrics, role)
     
-    def show_recommendations(self, user_id):
-        st.subheader("Improvement Recommendations")
+    def _calculate_role_metrics(self, interviews: List[Dict], role: str) -> Dict[str, float]:
+        """Calculate comprehensive role-specific metrics."""
+        role_info = ROLE_CRITERIA.get(role, ROLE_CRITERIA["Software Engineer"])
+        metrics = {}
         
-        performance_summary = self.db.get_performance_summary(user_id)
-        if not performance_summary:
-            st.info("Complete more interviews to receive personalized recommendations!")
-            return
+        for skill in role_info['core_skills'] + role_info['practices'] + role_info['soft_skills']:
+            skill_key = skill.lower().replace(" ", "_")
+            scores = [
+                interview['assessment'].get(skill_key, 0)
+                for interview in interviews
+                if 'assessment' in interview
+            ]
+            metrics[skill_key] = sum(scores) / len(scores) if scores else 0
             
-        recommendations = []
-        
-        if performance_summary['attention'] < 0.7:
-            recommendations.append("""
-            - **Attention Focus:**
-              - Practice maintaining focus during longer conversations
-              - Take short breaks between practice sessions
-              - Minimize distractions in your environment
-            """)
-            
-        if performance_summary['eye_contact'] < 0.7:
-            recommendations.append("""
-            - **Eye Contact:**
-              - Look directly at the camera when speaking
-              - Practice with a friend via video call
-              - Set up your camera at eye level
-            """)
-            
-        if performance_summary['speech_clarity'] < 0.7:
-            recommendations.append("""
-            - **Speech Clarity:**
-              - Practice speaking slowly and clearly
-              - Record yourself and listen for areas of improvement
-              - Use tongue twisters for articulation practice
-            """)
-            
-        if performance_summary['confidence'] < 0.7:
-            recommendations.append("""
-            - **Confidence:**
-              - Prepare and practice responses to common questions
-              - Use positive body language
-              - Focus on your achievements and strengths
-            """)
-            
-        if performance_summary['body_language'] < 0.7:
-            recommendations.append("""
-            - **Body Language:**
-              - Maintain good posture
-              - Use appropriate hand gestures
-              - Practice in front of a mirror
-            """)
-            
-        if not recommendations:
-            st.write("Great job! Your performance is strong across all areas. Keep practicing to maintain your skills.")
+        return metrics
+    
+    def _display_summary_metrics(self, metrics: Dict[str, float]):
+        """Display summary metrics with visual indicators."""
+        for metric, score in metrics.items():
+            label = metric.replace("_", " ").title()
+            color = self._get_score_color(score)
+            st.markdown(
+                f'<div style="padding: 10px; margin: 5px 0; border-radius: 5px; '
+                f'background-color: {color}; color: white;">'
+                f'{label}: {score:.1f}/10</div>',
+                unsafe_allow_html=True
+            )
+    
+    def _get_score_color(self, score: float) -> str:
+        """Get color based on score."""
+        if score >= 8.0:
+            return "#28a745"  # Green
+        elif score >= 6.5:
+            return "#17a2b8"  # Blue
+        elif score >= 5.0:
+            return "#ffc107"  # Yellow
         else:
-            for recommendation in recommendations:
-                st.markdown(recommendation)
+            return "#dc3545"  # Red
+    
+    def _display_improvement_suggestions(self, metrics: Dict[str, float], role: str):
+        """Display personalized improvement suggestions."""
+        # Find weakest areas
+        weak_areas = sorted(metrics.items(), key=lambda x: x[1])[:3]
+        
+        st.markdown("#### Focus Areas")
+        for area, score in weak_areas:
+            area_name = area.replace("_", " ").title()
+            st.warning(
+                f"**{area_name}** (Current: {score:.1f}/10)\n\n"
+                f"{self._get_improvement_tip(area, role)}"
+            )
+    
+    def _get_improvement_tip(self, area: str, role: str) -> str:
+        """Get specific improvement tip based on area and role."""
+        role_info = ROLE_CRITERIA.get(role, ROLE_CRITERIA["Software Engineer"])
+        
+        tips = {
+            "technical_depth": "Focus on advanced concepts and practical applications.",
+            "problem_solving": "Practice algorithmic problems and system design.",
+            "communication": "Work on explaining technical concepts clearly.",
+            "best_practices": "Study industry standards and design patterns."
+        }
+        
+        return tips.get(area, "Continue practicing and gaining experience.")

@@ -66,29 +66,54 @@ except Exception as e:
     st.error(f"⚠️ Error configuring API: {str(e)}")
     st.stop()
 
-# Retry decorator for API calls
+# Retry decorator for API calls with rate limiting
 def retry_on_error(max_retries=3, delay=1):
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
             retries = 0
+            last_error = None
+            
             while retries < max_retries:
                 try:
+                    if retries > 0:
+                        time.sleep(delay * (2 ** (retries - 1)))  # Exponential backoff
                     return func(*args, **kwargs)
                 except Exception as e:
+                    last_error = e
+                    error_type = type(e).__name__
+                    
+                    if "quota" in str(e).lower():
+                        st.error("⚠️ API quota exceeded. Please try again later.")
+                        raise
+                    elif "invalid" in str(e).lower():
+                        st.error("⚠️ Invalid API key. Please check your configuration.")
+                        raise
+                    
                     retries += 1
                     if retries == max_retries:
-                        raise e
-                    time.sleep(delay)
+                        st.error(f"⚠️ Error after {max_retries} retries: {str(last_error)}")
+                        raise last_error
+                        
             return None
         return wrapper
     return decorator
 
-@retry_on_error()
+@retry_on_error(max_retries=3, delay=2)
 def get_ai_response(messages):
-    model = genai.GenerativeModel('gemini-1.5-flash-latest')
-    response = model.generate_content(messages)
-    return response.text
+    """Get AI response with enhanced error handling and rate limiting."""
+    try:
+        model = genai.GenerativeModel('gemini-1.5-flash-latest')
+        response = model.generate_content(messages)
+        
+        if not response or not response.text:
+            raise ValueError("Empty response from AI model")
+            
+        return response.text
+        
+    except Exception as e:
+        st.error(f"⚠️ Error getting AI response: {str(e)}")
+        raise
 
 def calculate_role_specific_metrics(role, experience, responses):
     # Initialize metrics with default values
@@ -176,6 +201,10 @@ if 'session_stats' not in st.session_state:
     }
 if 'interview_started' not in st.session_state:
     st.session_state.interview_started = False
+if 'is_processing' not in st.session_state:
+    st.session_state.is_processing = False
+if 'current_response' not in st.session_state:
+    st.session_state.current_response = ""
 
 # Custom CSS for Adobe-like styling
 st.markdown("""
@@ -433,20 +462,34 @@ with st.sidebar:
 
 def start_interview(role, experience, interview_type, difficulty):
     """Start a new interview session with initial question."""
-    context = f"""As an interviewer for a {role} position with {experience} of experience, conducting a {interview_type.lower()} interview:
-1. Ask a thorough {interview_type.lower()} question at {difficulty.lower()} difficulty level
-2. Focus on {get_focus_points(interview_type, role)}
-3. Adjust depth and complexity based on difficulty:
-   - Easy: Basic concepts and fundamentals
-   - Medium: Applied knowledge and scenarios
-   - Hard: Complex problems and edge cases
-   - Legend: Expert-level challenges
-4. Match the question to {experience} experience level
+    context = f"""As an expert interviewer for a {role} position with {experience} experience expectation, 
+generate a relevant {interview_type.lower()} interview question.
 
-Format your response with just the question:
-Question: [Your detailed question here]
+Role Context:
+- Position: {role}
+- Experience Level: {experience}
+- Interview Type: {interview_type}
+- Difficulty: {difficulty}
+- Focus Areas: {get_focus_points(interview_type, role)}
 
-Expected Answer: [Detailed model answer that will be shown after candidate responds]"""
+Required Question Criteria:
+1. Must be highly relevant to the {role} role
+2. Appropriate for {experience} experience level
+3. Follows {interview_type.lower()} interview style
+4. Matches {difficulty.lower()} difficulty:
+   - Easy: Core concepts, fundamentals, daily tasks
+   - Medium: Applied knowledge, real scenarios, problem-solving
+   - Hard: Complex problems, system design, edge cases
+   - Legend: Expert challenges, architecture decisions, innovation
+
+Format your response exactly as:
+Question: [Clear, focused question appropriate for role and level]
+
+Expected Answer: [Detailed model answer including:
+- Key points that should be covered
+- Common pitfalls to avoid
+- Best practices to mention
+- Experience-appropriate insights]"""
     
     first_question = get_ai_response(context)
     st.session_state.messages = [{"role": "assistant", "content": first_question}]
@@ -467,8 +510,9 @@ if not st.session_state.messages:
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         if st.button("🎯 Start Interview", use_container_width=True, type="primary"):
-            start_interview(selected_role, experience_level, interview_type, difficulty_level)
-            st.rerun()
+            with st.spinner("🤖 Preparing your first question..."):
+                start_interview(selected_role, experience_level, interview_type, difficulty_level)
+                st.rerun()
 
 # Display interview conversation
 for i, message in enumerate(st.session_state.messages):
@@ -518,81 +562,100 @@ for i, message in enumerate(st.session_state.messages):
 
 # Input area for user responses
 if st.session_state.messages:  # Only show input if interview has started
-    if 'current_response' not in st.session_state:
-        st.session_state.current_response = ""
-      
     # Get user input
     prompt = st.text_input(
         "Your Response",
         placeholder="Type your answer here and press Enter",
         key="response_input",
-        on_change=None
+        disabled=st.session_state.is_processing
     )
     
-    # Only process if there's new input
-    if prompt and prompt != st.session_state.current_response:
+    # Only process if there's new input and not already processing
+    if prompt and prompt != st.session_state.current_response and not st.session_state.is_processing:
+        st.session_state.is_processing = True
         st.session_state.current_response = prompt
         
-        with st.spinner("Analyzing your response..."):
-            # Add user response to messages
-            st.session_state.messages.append({"role": "user", "content": prompt})
-            
-            # Prepare context for AI evaluation            # Prepare context for AI evaluation
-            context = f"""As an expert interviewer, evaluate this response:
+        with st.spinner("🤔 Analyzing your response..."):
+            try:
+                # Add user response to messages
+                st.session_state.messages.append({"role": "user", "content": prompt})
+                
+                # Get previous question for context
+                prev_question = ""
+                for msg in reversed(st.session_state.messages[:-1]):
+                    if msg["role"] == "assistant" and "Question:" in msg["content"]:
+                        prev_question = msg["content"].split("Question:")[1].split("Expected Answer:")[0].strip()
+                        break
+                
+                # Prepare context for AI evaluation
+                context = f"""As an expert interviewer for {selected_role} positions with {experience_level} experience expectation, evaluate this response:
+
+Question Asked: {prev_question}
+Candidate's Answer: {prompt}
 
 Role: {selected_role}
 Experience Level: {experience_level}
 Interview Type: {interview_type}
 Difficulty: {difficulty_level}
 
-Previous Conversation:
-{str(st.session_state.messages)}
+Provide a detailed evaluation in this format:
 
-Evaluate the response with these criteria (score from 1-10):
-1. Technical Accuracy: Correctness and depth of technical knowledge
-2. Completeness: Coverage of key points and concepts
-3. Communication: Clarity, structure, and professionalism
-4. Best Practices: Adherence to industry standards
-5. Experience Match: Alignment with claimed experience level
+Technical Assessment (1-10):
+- Knowledge Depth: [score] - [brief explanation]
+- Implementation Understanding: [score] - [brief explanation]
+- Best Practices Awareness: [score] - [brief explanation]
 
-Provide your evaluation in this format:
-1. Technical Accuracy (X/10): Brief justification
-2. Completeness (X/10): Note coverage and gaps
-3. Communication (X/10): Comment on clarity
-4. Best Practices (X/10): Standards assessment
-5. Experience Match (X/10): Level alignment
+Communication Assessment (1-10):
+- Clarity: [score] - [brief explanation]
+- Structure: [score] - [brief explanation]
+- Professionalism: [score] - [brief explanation]
 
-Summary:
-- Key Strengths: List 2-3 main strengths
-- Areas to Improve: List 1-2 specific areas
-- Overall Score: Average of all scores
+Experience Level Match:
+- Expected Level: {experience_level}
+- Demonstrated Level: [assessment]
+- Score: [1-10]
+
+Key Strengths:
+- [Point 1]
+- [Point 2]
+
+Areas for Improvement:
+- [Point 1]
+- [Point 2]
+
+Overall Score: [Calculate average]
 
 Follow-up Question:
-Ask a logically connected {difficulty_level} difficulty question.
+[Ask a logically connected {difficulty_level} difficulty question]
 
 Expected Answer:
-Provide a concise model answer focusing on key points."""
+[Provide a model answer with key points]"""
+                
+                # Get AI response and update session state
+                response = get_ai_response(context)
+                st.session_state.messages.append({"role": "assistant", "content": response})
+                st.session_state.interview_history.append({
+                    "timestamp": datetime.now().isoformat(),
+                    "role": selected_role,
+                    "experience": experience_level,
+                    "interview_type": interview_type,
+                    "question": prev_question,
+                    "answer": prompt,
+                    "feedback": response
+                })
+                
+                # Update statistics
+                st.session_state.session_stats['total_questions'] += 1
+                role_metrics = calculate_role_specific_metrics(
+                    selected_role,
+                    experience_level,
+                    st.session_state.messages
+                )
+                st.session_state.session_stats['role_specific_metrics'] = role_metrics
             
-            # Get AI response and update session state
-            response = get_ai_response(context)
-            st.session_state.messages.append({"role": "assistant", "content": response})
-            st.session_state.interview_history.append({
-                "timestamp": datetime.now().isoformat(),
-                "role": selected_role,
-                "experience": experience_level,
-                "interview_type": interview_type,
-                "question": prompt,
-                "response": response
-            })
+            except Exception as e:
+                st.error(f"An error occurred while processing your response: {str(e)}")
             
-            # Update statistics
-            st.session_state.session_stats['total_questions'] += 1
-            role_metrics = calculate_role_specific_metrics(
-                selected_role,
-                experience_level,
-                st.session_state.messages
-            )
-            st.session_state.session_stats['role_specific_metrics'] = role_metrics
-            
-            # Use rerun only once after processing is complete
-            st.rerun()
+            finally:
+                st.session_state.is_processing = False
+                st.rerun()
