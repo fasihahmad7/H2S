@@ -8,10 +8,13 @@ Watch the demo on YouTube: [AI Interview Assistant Demo](https://youtu.be/2btoXX
 ## Features
 
 - 🤖 AI-powered interview questions generation
+- 🎙️ Speech-to-text input support
 - 📝 Real-time answer analysis and feedback
 - 💡 Intelligent feedback on response quality
 - 🎯 Technical accuracy assessment
 - 📊 Performance tracking and improvement suggestions
+- 🔄 Streamlined interview flow with organized responses
+- 🎓 Model answers for learning and improvement
 
 ## Setup
 
@@ -20,14 +23,29 @@ Watch the demo on YouTube: [AI Interview Assistant Demo](https://youtu.be/2btoXX
    ```bash
    pip install -r requirements.txt
    ```
+   This will install all required packages, including:
+   - Streamlit for the web interface
+   - Google Generative AI for intelligent responses
+   - SpeechRecognition for voice input
+   - PyAudio for microphone support
+   - Other data processing and visualization libraries
+
 3. Create a `.env` file with your Google AI API key:
    ```
    GOOGLE_API_KEY=your_api_key_here
    ```
+
 4. Run the application:
    ```bash
    streamlit run app.py
    ```
+
+### Voice Input Setup
+For speech-to-text functionality:
+- Ensure you have a working microphone
+- Grant microphone permissions when prompted
+- Click the microphone button to start recording your answer
+- Speak clearly and the system will transcribe your response
 
 ## Project Structure
 
@@ -38,13 +56,15 @@ ai_interview_assistant/
 ├── README.md          # Documentation
 └── src/
     ├── components/    # UI components
-    │   └── dashboard.py
+    │   ├── dashboard.py    # Analytics and metrics dashboard
+    │   └── audio_input.py  # Speech-to-text component
     ├── database/     # Data persistence
-    │   └── db_manager.py
+    │   ├── db_manager.py   # Database operations
+    │   └── init_db.py      # Database initialization
     └── utils/        # Utility functions
-        ├── config.py
-        ├── helpers.py
-        └── interview_analyzer.py
+        ├── config.py           # Configuration and constants
+        ├── helpers.py          # Common utility functions
+        └── interview_analyzer.py # Interview analysis logic
 ```
 
 ## Usage
