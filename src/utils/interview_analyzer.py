@@ -14,11 +14,30 @@ class InterviewAnalyzer:
     def analyze_response(self, 
                         job_role: str, 
                         question: str, 
-                        answer: str,
-                        experience_level: str) -> Dict[str, Any]:
+                        answer: Optional[str] = None,
+                        experience_level: str = "entry",
+                        use_speech: bool = False) -> Dict[str, Any]:
         """
         Analyze interview response with enhanced role-specific scoring.
+        
+        Args:
+            job_role: The role being interviewed for
+            question: The interview question
+            answer: Text answer (optional if use_speech is True)
+            experience_level: Experience level of the candidate
+            use_speech: Whether to use speech input for the answer
+            
+        Returns:
+            Dictionary containing analysis results
         """
+        from ..utils.helpers import speech_to_text
+        
+        if use_speech and not answer:
+            answer = speech_to_text()
+            if not answer:
+                return {
+                    "error": "Speech could not be recognized. Please try again or provide text input."
+                }
         # Role-specific evaluation criteria with detailed competencies
         role_criteria = {
             "Software Engineer": {

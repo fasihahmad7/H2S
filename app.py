@@ -6,6 +6,7 @@ import json
 import os
 from datetime import datetime
 from dotenv import load_dotenv
+from src.components.audio_input import AudioInput
 
 def get_focus_points(interview_type: str, role: str) -> str:
     """Get focus points based on interview type and role."""
@@ -492,7 +493,11 @@ Expected Answer: [Detailed model answer including:
 - Experience-appropriate insights]"""
     
     first_question = get_ai_response(context)
-    st.session_state.messages = [{"role": "assistant", "content": first_question}]
+    st.session_state.messages = [{
+        "role": "assistant",
+        "message_type": "question",
+        "content": first_question
+    }]
 
 # Display welcome message if no messages exist
 if not st.session_state.messages:
@@ -517,35 +522,42 @@ if not st.session_state.messages:
 # Display interview conversation
 for i, message in enumerate(st.session_state.messages):
     if message["role"] == "assistant":
-        # Split content to separate expected answer
         content = message["content"]
-        if "Expected Answer:" in content:
-            parts = content.split("Expected Answer:", 1)
-            
-            # Show the question/feedback part
-            st.markdown(
-                f'<div class="interview-message interviewer-message">'
-                f'<b>👤 Interviewer:</b><br>{parts[0].strip()}'
-                f'</div>',
-                unsafe_allow_html=True
-            )
-            
-            # Only show expected answer if this is not the latest question or user has responded
-            show_expected = (i < len(st.session_state.messages) - 1 or 
-                          (i == len(st.session_state.messages) - 1 and 
-                           i > 0 and st.session_state.messages[i-1]["role"] == "user"))
-            if show_expected:
+        message_type = message.get("message_type", "question")  # Default to question for backwards compatibility
+        
+        if message_type == "question":
+            if "Expected Answer:" in content:
+                question, answer = content.split("Expected Answer:", 1)
+                
+                # Show the question
                 st.markdown(
                     f'<div class="interview-message interviewer-message">'
-                    f'<b>✓ Expected Answer:</b><br>{parts[1].strip()}'
+                    f'<b>👤 Question:</b><br>{question.strip()}'
                     f'</div>',
                     unsafe_allow_html=True
                 )
-        else:
-            # Message without expected answer
+                
+                # Only show expected answer after user has responded
+                show_expected = (i < len(st.session_state.messages) - 2 or 
+                              (i > 0 and st.session_state.messages[i-1]["role"] == "user"))
+                if show_expected:
+                    st.markdown(
+                        f'<div class="interview-message model-answer">'
+                        f'<b>✓ Model Answer:</b><br>{answer.strip()}'
+                        f'</div>',
+                        unsafe_allow_html=True
+                    )
+            else:
+                st.markdown(
+                    f'<div class="interview-message interviewer-message">'
+                    f'<b>👤 Interviewer:</b><br>{content}'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
+        elif message_type == "assessment":
             st.markdown(
-                f'<div class="interview-message interviewer-message">'
-                f'<b>👤 Interviewer:</b><br>{content}'
+                f'<div class="interview-message assessment">'
+                f'<b>� Assessment:</b><br>{content}'
                 f'</div>',
                 unsafe_allow_html=True
             )
@@ -562,13 +574,14 @@ for i, message in enumerate(st.session_state.messages):
 
 # Input area for user responses
 if st.session_state.messages:  # Only show input if interview has started
-    # Get user input
-    prompt = st.text_input(
-        "Your Response",
-        placeholder="Type your answer here and press Enter",
-        key="response_input",
-        disabled=st.session_state.is_processing
-    )
+    # Initialize audio input component
+    audio_input = AudioInput()
+    
+    # Get user input through text or speech
+    if not st.session_state.is_processing:
+        prompt = audio_input.get_user_input(
+            placeholder="Type your answer here or use the microphone button to speak"
+        )
     
     # Only process if there's new input and not already processing
     if prompt and prompt != st.session_state.current_response and not st.session_state.is_processing:
@@ -633,7 +646,16 @@ Expected Answer:
                 
                 # Get AI response and update session state
                 response = get_ai_response(context)
-                st.session_state.messages.append({"role": "assistant", "content": response})
+                
+                # Split the response into assessment and next question
+                parts = response.split("Follow-up Question:", 1)
+                assessment = parts[0].strip()
+                next_question = parts[1].split("Expected Answer:", 1)
+                
+                # Add messages in the desired order
+                st.session_state.messages.append({"role": "assistant", "content": assessment, "message_type": "assessment"})
+                st.session_state.messages.append({"role": "assistant", "content": f"Follow-up Question:{next_question[0]}\nExpected Answer:{next_question[1]}", "message_type": "question"})
+                
                 st.session_state.interview_history.append({
                     "timestamp": datetime.now().isoformat(),
                     "role": selected_role,

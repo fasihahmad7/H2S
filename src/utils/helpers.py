@@ -1,9 +1,37 @@
 """
 Common utility functions for the AI Interview Assistant.
 """
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
 import json
+import speech_recognition as sr
+
+def speech_to_text() -> Optional[str]:
+    """
+    Record audio from the microphone and convert it to text.
+    Returns the recognized text or None if recognition fails.
+    """
+    recognizer = sr.Recognizer()
+    
+    try:
+        with sr.Microphone() as source:
+            recognizer.adjust_for_ambient_noise(source, duration=1)
+            print("Listening... Speak now.")
+            audio = recognizer.listen(source, timeout=10, phrase_time_limit=30)
+            
+        try:
+            text = recognizer.recognize_google(audio)
+            return text
+        except sr.UnknownValueError:
+            print("Could not understand the audio")
+            return None
+        except sr.RequestError:
+            print("Could not request results from the speech recognition service")
+            return None
+            
+    except Exception as e:
+        print(f"Error accessing microphone: {str(e)}")
+        return None
 
 def calculate_average_metrics(metrics_list: List[Dict[str, float]]) -> Dict[str, float]:
     """Calculate average values for a list of metrics."""
