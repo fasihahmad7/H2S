@@ -14,3 +14,6 @@ numpy>=1.24.0
 black  # Code formatting
 pylint  # Code linting
 pytest  # Testing
+
+# Logging (built into Python, but explicit for clarity)
+# logging is part of Python standard library

@@ -1,4 +1,5 @@
 import streamlit as st
+from .custom_text_input import custom_text_area
 from typing import Optional
 import time
 from ..utils.helpers import speech_to_text
@@ -21,7 +22,14 @@ class AudioInput:
         col1, col2 = st.columns([4, 1])
         
         with col1:
-            text_input = st.text_area("Your Answer", placeholder=placeholder, height=150)
+            # Use a unique key for the text area to prevent pre-filling
+            text_input = custom_text_area(
+                "Your Answer",
+                placeholder=placeholder,
+                height=150,
+                allow_paste=False,
+                key=f"user_input_{st.session_state.session_stats['total_questions']}"
+            )
             
         with col2:
             use_mic = st.button(

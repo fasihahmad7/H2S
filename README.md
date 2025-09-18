@@ -15,6 +15,10 @@ Watch the demo on YouTube: [AI Interview Assistant Demo](https://youtu.be/2btoXX
 - 📊 Performance tracking and improvement suggestions
 - 🔄 Streamlined interview flow with organized responses
 - 🎓 Model answers for learning and improvement
+- 🏗️ **NEW**: Modular architecture with separation of concerns
+- 📋 **NEW**: Comprehensive logging and error handling
+- 🧪 **NEW**: Unit testing framework
+- ⚡ **NEW**: Improved performance and reduced rerun loops
 
 ## Setup
 
@@ -51,20 +55,34 @@ For speech-to-text functionality:
 
 ```
 ai_interview_assistant/
-├── app.py              # Main application file
-├── requirements.txt    # Project dependencies
-├── README.md          # Documentation
+├── app.py                      # Main application entry point (refactored)
+├── requirements.txt            # Project dependencies
+├── README.md                  # Documentation
+├── .env.example               # Environment configuration example
+├── tests/                     # Unit tests
+│   ├── __init__.py
+│   └── test_session_manager.py
 └── src/
-    ├── components/    # UI components
-    │   ├── dashboard.py    # Analytics and metrics dashboard
-    │   └── audio_input.py  # Speech-to-text component
-    ├── database/     # Data persistence
-    │   ├── db_manager.py   # Database operations
-    │   └── init_db.py      # Database initialization
-    └── utils/        # Utility functions
-        ├── config.py           # Configuration and constants
-        ├── helpers.py          # Common utility functions
-        └── interview_analyzer.py # Interview analysis logic
+    ├── components/            # UI components
+    │   ├── audio_input.py     # Speech-to-text component
+    │   ├── custom_text_input.py # Custom text input component
+    │   └── dashboard.py       # Analytics and metrics dashboard
+    ├── controllers/           # Application controllers
+    │   ├── __init__.py
+    │   └── interview_controller.py # Interview flow controller
+    ├── services/              # Business logic services
+    │   ├── __init__.py
+    │   ├── ai_service.py      # AI operations service
+    │   └── session_manager.py # Session state management
+    ├── ui/                    # User interface management
+    │   ├── __init__.py
+    │   └── ui_manager.py      # UI rendering and styling
+    └── utils/                 # Utility functions
+        ├── config.py          # Configuration and constants
+        ├── helpers.py         # Common utility functions
+        ├── interview_analyzer.py # Interview analysis logic
+        ├── metrics_calculator.py # Metrics calculation
+        └── logging_config.py  # Logging configuration
 ```
 
 ## Usage

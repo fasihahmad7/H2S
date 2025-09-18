@@ -1,6 +1,7 @@
 import google.generativeai as genai
 import json
 from typing import Dict, List, Optional, Any
+from .config import ROLE_CRITERIA, EXPERIENCE_CRITERIA, MODEL_NAME
 
 class InterviewAnalyzer:
     def __init__(self, model):
@@ -10,6 +11,15 @@ class InterviewAnalyzer:
             'technical': 0.3,
             'experience_match': 0.2
         }
+        self.min_answer_length = 10
+        
+    def validate_input(self, answer: str) -> tuple[bool, str]:
+        """Validate user input before processing"""
+        if not answer:
+            return False, "Answer cannot be empty"
+        if len(answer.strip()) < self.min_answer_length:
+            return False, f"Answer must be at least {self.min_answer_length} characters long"
+        return True, ""
         
     def analyze_response(self, 
                         job_role: str, 
@@ -38,94 +48,9 @@ class InterviewAnalyzer:
                 return {
                     "error": "Speech could not be recognized. Please try again or provide text input."
                 }
-        # Role-specific evaluation criteria with detailed competencies
-        role_criteria = {
-            "Software Engineer": {
-                "technical_depth": {
-                    "weight": 0.4,
-                    "key_aspects": ["algorithms", "data structures", "system design", "coding practices"]
-                },
-                "problem_solving": {
-                    "weight": 0.3,
-                    "key_aspects": ["analytical thinking", "optimization", "edge cases", "scalability"]
-                },
-                "best_practices": {
-                    "weight": 0.3,
-                    "key_aspects": ["clean code", "testing", "documentation", "security"]
-                }
-            },
-            "Data Scientist": {
-                "analytical_thinking": {
-                    "weight": 0.4,
-                    "key_aspects": ["statistical analysis", "data preprocessing", "feature engineering", "model evaluation"]
-                },
-                "technical_knowledge": {
-                    "weight": 0.3,
-                    "key_aspects": ["machine learning", "deep learning", "data visualization", "big data"]
-                },
-                "research_methodology": {
-                    "weight": 0.3,
-                    "key_aspects": ["experiment design", "hypothesis testing", "validation methods", "literature review"]
-                }
-            },
-            "Functional Tester": {
-                "test_methodology": {
-                    "weight": 0.4,
-                    "key_aspects": ["test planning", "test case design", "defect lifecycle", "test coverage"]
-                },
-                "quality_mindset": {
-                    "weight": 0.3,
-                    "key_aspects": ["attention to detail", "risk assessment", "user perspective", "quality standards"]
-                },
-                "technical_understanding": {
-                    "weight": 0.3,
-                    "key_aspects": ["testing tools", "automation concepts", "test environments", "debugging"]
-                }
-            }
-        }
-        
-        # Enhanced experience-based expectations with detailed criteria
-        exp_expectations = {
-            "0-2 years": {
-                "base_score": 6.0,
-                "threshold": 0.7,
-                "criteria": {
-                    "technical_depth": "Basic understanding of core concepts",
-                    "practical_skills": "Able to handle basic tasks with guidance",
-                    "independence": "Requires regular supervision"
-                }
-            },
-            "2-5 years": {
-                "base_score": 7.0,
-                "threshold": 0.75,
-                "criteria": {
-                    "technical_depth": "Good understanding of advanced concepts",
-                    "practical_skills": "Can handle moderate complexity independently",
-                    "independence": "Occasional guidance needed"
-                }
-            },
-            "5-8 years": {
-                "base_score": 8.0,
-                "threshold": 0.8,
-                "criteria": {
-                    "technical_depth": "Deep understanding of complex topics",
-                    "practical_skills": "Handles complex tasks effectively",
-                    "independence": "Works independently, guides others"
-                }
-            },
-            "8+ years": {
-                "base_score": 8.5,
-                "threshold": 0.85,
-                "criteria": {
-                    "technical_depth": "Expert-level understanding",
-                    "practical_skills": "Tackles challenging problems innovatively",
-                    "independence": "Strategic thinking, mentors others"
-                }
-            }
-        }
         
         # Get role-specific criteria with fallback to generic criteria
-        role_weights = role_criteria.get(job_role, {
+        role_weights = ROLE_CRITERIA.get(job_role, {
             "general_knowledge": {
                 "weight": 0.4,
                 "key_aspects": ["domain knowledge", "industry awareness", "technical fundamentals"]
@@ -141,7 +66,7 @@ class InterviewAnalyzer:
         })
         
         # Get experience expectations
-        exp_expect = exp_expectations.get(experience_level, exp_expectations["0-2 years"])
+        exp_expect = EXPERIENCE_CRITERIA.get(experience_level, EXPERIENCE_CRITERIA["0-2 years"])
         
         # Enhanced prompt for more accurate analysis
         prompt = f"""As an expert technical interviewer for {job_role} positions with {experience_level} experience expectation, provide a detailed evaluation of this response.

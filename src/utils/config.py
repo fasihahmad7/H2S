@@ -1,58 +1,85 @@
 """
 Configuration settings for the AI Interview Assistant.
 """
-from typing import Dict, List
+from typing import Dict, List, Any
 
-# AI Model Settings
-MODEL_NAME = 'gemini-pro'
+# --- AI Model Settings ---
+MODEL_NAME = 'gemini-1.5-flash-latest'
 TEMPERATURE = 0.7
 TOP_P = 0.8
 TOP_K = 40
 
-# Interview Settings
-JOB_ROLES: List[str] = [
-    "Software Engineer",
-    "Data Scientist",
-    "Product Manager",
-    "Full Stack Developer",
-    "AI/ML Engineer",
-    "DevOps Engineer"
+# --- Interview Settings ---
+INTERVIEW_TYPES = [
+    "Technical", "Behavioral", "Problem Solving"
+]
+DIFFICULTY_LEVELS = [
+    "Easy", "Medium", "Hard", "Legend"
+]
+JOB_ROLES = [
+    "Software Engineer", "Data Scientist", "Product Manager",
+    "Full Stack Developer", "AI/ML Engineer", "DevOps Engineer",
+    "QA Engineer", "Automation Test Engineer", "SDET",
+    "Performance Test Engineer", "API Test Engineer",
+    "Mobile Test Engineer", "Security Test Engineer",
+    "Test Architect", "QA Lead", "Functional Tester"
+]
+EXPERIENCE_RANGES = [
+    "0-2 years", "2-5 years", "5-8 years", "8+ years"
 ]
 
-QUESTION_TYPES: Dict[str, str] = {
-    "technical": "Generate a technical question that tests specific knowledge and problem-solving skills.",
-    "behavioral": "Generate a behavioral question that assesses past experiences and soft skills.",
-    "problem_solving": "Generate a problem-solving question that evaluates analytical thinking."
-}
-
-# Performance Analysis Settings
-ANALYSIS_WEIGHTS = {
-    'response_quality': 0.5,
-    'technical_accuracy': 0.3,
-    'communication_clarity': 0.2
-}
-
-# Role-specific evaluation criteria
+# --- Role-specific evaluation criteria ---
 ROLE_CRITERIA = {
     "Software Engineer": {
+        "technical_depth": {
+            "weight": 0.4,
+            "key_aspects": ["algorithms", "data structures", "system design", "coding practices"]
+        },
+        "problem_solving": {
+            "weight": 0.3,
+            "key_aspects": ["analytical thinking", "optimization", "edge cases", "scalability"]
+        },
+        "best_practices": {
+            "weight": 0.3,
+            "key_aspects": ["clean code", "testing", "documentation", "security"]
+        },
         "core_skills": ["Data Structures", "Algorithms", "System Design", "Programming Languages"],
         "practices": ["Clean Code", "Testing", "Version Control", "CI/CD"],
         "soft_skills": ["Problem Solving", "Communication", "Collaboration"],
-        "evaluation_weights": {
-            "technical_depth": 0.4,
-            "coding_practices": 0.3,
-            "system_thinking": 0.3
-        }
     },
     "Data Scientist": {
+        "analytical_thinking": {
+            "weight": 0.4,
+            "key_aspects": ["statistical analysis", "data preprocessing", "feature engineering", "model evaluation"]
+        },
+        "technical_knowledge": {
+            "weight": 0.3,
+            "key_aspects": ["machine learning", "deep learning", "data visualization", "big data"]
+        },
+        "research_methodology": {
+            "weight": 0.3,
+            "key_aspects": ["experiment design", "hypothesis testing", "validation methods", "literature review"]
+        },
         "core_skills": ["Statistics", "Machine Learning", "Data Analysis", "Feature Engineering"],
         "practices": ["Model Evaluation", "Data Preprocessing", "Experiment Design"],
         "soft_skills": ["Research", "Data Visualization", "Business Understanding"],
-        "evaluation_weights": {
-            "analytical_thinking": 0.4,
-            "technical_knowledge": 0.3,
-            "research_methodology": 0.3
-        }
+    },
+    "Functional Tester": {
+        "test_methodology": {
+            "weight": 0.4,
+            "key_aspects": ["test planning", "test case design", "defect lifecycle", "test coverage"]
+        },
+        "quality_mindset": {
+            "weight": 0.3,
+            "key_aspects": ["attention to detail", "risk assessment", "user perspective", "quality standards"]
+        },
+        "technical_understanding": {
+            "weight": 0.3,
+            "key_aspects": ["testing tools", "automation concepts", "test environments", "debugging"]
+        },
+        "core_skills": ["Test Design", "Test Automation", "Bug Tracking", "Test Coverage"],
+        "practices": ["Test Planning", "Quality Metrics", "Test Frameworks"],
+        "soft_skills": ["Attention to Detail", "Process Improvement", "Risk Assessment"],
     },
     "DevOps Engineer": {
         "core_skills": ["Infrastructure", "Automation", "Cloud Services", "CI/CD"],
@@ -76,51 +103,47 @@ ROLE_CRITERIA = {
     }
 }
 
-# Experience level expectations
+# --- Experience level expectations ---
 EXPERIENCE_CRITERIA = {
     "0-2 years": {
         "base_score": 6.0,
         "threshold": 0.7,
-        "expectations": {
-            "knowledge": "Basic understanding of fundamentals",
-            "independence": "Works with guidance",
-            "complexity": "Handles simple tasks",
-            "leadership": "Learns from team"
+        "criteria": {
+            "technical_depth": "Basic understanding of core concepts",
+            "practical_skills": "Able to handle basic tasks with guidance",
+            "independence": "Requires regular supervision"
         }
     },
     "2-5 years": {
         "base_score": 7.0,
         "threshold": 0.75,
-        "expectations": {
-            "knowledge": "Good grasp of concepts",
-            "independence": "Works independently",
-            "complexity": "Handles moderate complexity",
-            "leadership": "Mentors juniors"
+        "criteria": {
+            "technical_depth": "Good understanding of advanced concepts",
+            "practical_skills": "Can handle moderate complexity independently",
+            "independence": "Occasional guidance needed"
         }
     },
     "5-8 years": {
         "base_score": 8.0,
         "threshold": 0.8,
-        "expectations": {
-            "knowledge": "Deep technical expertise",
-            "independence": "Fully autonomous",
-            "complexity": "Handles complex projects",
-            "leadership": "Technical leadership"
+        "criteria": {
+            "technical_depth": "Deep understanding of complex topics",
+            "practical_skills": "Handles complex tasks effectively",
+            "independence": "Works independently, guides others"
         }
     },
     "8+ years": {
         "base_score": 8.5,
         "threshold": 0.85,
-        "expectations": {
-            "knowledge": "Expert level understanding",
-            "independence": "Strategic thinking",
-            "complexity": "Architects solutions",
-            "leadership": "Drives innovation"
+        "criteria": {
+            "technical_depth": "Expert-level understanding",
+            "practical_skills": "Tackles challenging problems innovatively",
+            "independence": "Strategic thinking, mentors others"
         }
     }
 }
 
-# Interview type focus areas
+# --- Interview type focus areas ---
 INTERVIEW_FOCUS = {
     "Technical": {
         "primary": "technical_skills",
@@ -154,7 +177,7 @@ INTERVIEW_FOCUS = {
     }
 }
 
-# Difficulty level modifiers
+# --- Difficulty level modifiers ---
 DIFFICULTY_MODIFIERS = {
     "Easy": {
         "complexity": 0.7,
@@ -176,4 +199,12 @@ DIFFICULTY_MODIFIERS = {
         "depth": "expert knowledge",
         "scope": "system design"
     }
+}
+
+# --- Error Messages ---
+ERROR_MESSAGES = {
+    'rate_limit': '⚠️ Please wait a moment before submitting another response.',
+    'invalid_input': '⚠️ Your response is too short. Please provide a more detailed answer.',
+    'api_error': '⚠️ There was an issue connecting to the AI service. Please try again.',
+    'speech_error': '⚠️ Could not recognize speech. Please try again or use text input.'
 }
