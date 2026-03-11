@@ -4,7 +4,7 @@ Configuration settings for the AI Interview Assistant.
 from typing import Dict, List, Any
 
 # --- AI Model Settings ---
-MODEL_NAME = 'gemini-1.5-flash-latest'
+MODEL_NAME = 'gemini-2.5-flash'
 TEMPERATURE = 0.7
 TOP_P = 0.8
 TOP_K = 40
