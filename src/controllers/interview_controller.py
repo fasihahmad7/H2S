@@ -26,14 +26,14 @@ class InterviewController:
         focus = INTERVIEW_FOCUS.get(interview_type, {})
         return f"{focus.get('primary', '')}, {focus.get('secondary', '')}"
     
-    def start_interview(self, role: str, experience: str, interview_type: str, difficulty: str):
+    def start_interview(self, role: str, experience: str, interview_type: str, difficulty: str, custom_context: str = ""):
         """Start a new interview session with initial question."""
         try:
             focus_points = self.get_focus_points(interview_type, role)
             
             # Generate the first question
             question_data = self.ai_service.generate_interview_question(
-                role, experience, interview_type, difficulty, focus_points
+                role, experience, interview_type, difficulty, focus_points, custom_context
             )
             
             # Add the question to session
@@ -51,7 +51,7 @@ class InterviewController:
             st.error(f"Failed to start interview: {e}")
     
     def process_user_response(self, user_input: str, role: str, experience: str, 
-                            interview_type: str, difficulty: str):
+                            interview_type: str, difficulty: str, custom_context: str = ""):
         """Process user response and generate feedback with follow-up question."""
         try:
             # Validate input
@@ -79,7 +79,7 @@ class InterviewController:
             # Evaluate the response
             evaluation_data = self.ai_service.evaluate_response(
                 role, experience, interview_type, difficulty, 
-                prev_question_text, user_input
+                prev_question_text, user_input, custom_context
             )
             
             # Add assessment to messages
@@ -141,14 +141,14 @@ class InterviewController:
             self.session_manager.set_processing_state(False, "")
     
     def handle_user_input(self, user_input: str, role: str, experience: str, 
-                         interview_type: str, difficulty: str) -> bool:
+                         interview_type: str, difficulty: str, custom_context: str = "") -> bool:
         """Handle user input with all necessary checks and processing."""
         if not self.session_manager.should_process_input(user_input):
             return False
         
         with st.spinner("🤔 Analyzing your response..."):
             success = self.process_user_response(
-                user_input, role, experience, interview_type, difficulty
+                user_input, role, experience, interview_type, difficulty, custom_context
             )
             
         if success:

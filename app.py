@@ -74,6 +74,15 @@ def render_sidebar(session_manager: SessionManager, interview_controller: Interv
                                     help="Select the type of interview questions")
         difficulty_level = st.selectbox("Question Difficulty", DIFFICULTY_LEVELS, 
                                       help="Select the difficulty level of questions")
+        
+        # Custom context/skills field
+        st.markdown("### 🎯 Focus Areas (Optional)")
+        custom_context = st.text_area(
+            "Specific Skills or Topics",
+            placeholder="e.g., React hooks, AWS Lambda, System design patterns, etc.",
+            height=100,
+            help="Add any specific skills, technologies, or topics you want to practice"
+        )
 
         # Interview controls
         st.markdown("### 📊 Interview Controls")
@@ -105,7 +114,7 @@ def render_sidebar(session_manager: SessionManager, interview_controller: Interv
         ui_manager = UIManager()  # Create instance here since it's not passed as parameter
         ui_manager.render_session_stats(st.session_state.session_stats)
         
-        return selected_role, experience_level, interview_type, difficulty_level
+        return selected_role, experience_level, interview_type, difficulty_level, custom_context
 
 def main():
     """Main application function."""
@@ -117,7 +126,7 @@ def main():
         ui_manager.render_title()
         
         # Render sidebar and get configuration
-        selected_role, experience_level, interview_type, difficulty_level = render_sidebar(
+        selected_role, experience_level, interview_type, difficulty_level, custom_context = render_sidebar(
             session_manager, interview_controller
         )
 
@@ -135,10 +144,11 @@ def main():
                             "role": selected_role,
                             "experience": experience_level,
                             "type": interview_type,
-                            "difficulty": difficulty_level
+                            "difficulty": difficulty_level,
+                            "custom_context": custom_context if custom_context else "None"
                         })
                         interview_controller.start_interview(
-                            selected_role, experience_level, interview_type, difficulty_level
+                            selected_role, experience_level, interview_type, difficulty_level, custom_context
                         )
                         st.rerun()
         else:
@@ -160,7 +170,7 @@ def main():
                     
                     interview_controller.handle_user_input(
                         user_input, selected_role, experience_level, 
-                        interview_type, difficulty_level
+                        interview_type, difficulty_level, custom_context
                     )
                     
     except Exception as e:

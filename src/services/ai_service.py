@@ -97,8 +97,13 @@ class AIService:
     
     def generate_interview_question(self, role: str, experience: str, 
                                   interview_type: str, difficulty: str, 
-                                  focus_points: str) -> Dict[str, str]:
+                                  focus_points: str, custom_context: str = "") -> Dict[str, str]:
         """Generate an interview question with expected answer."""
+        # Add custom context to the prompt if provided
+        context_addition = ""
+        if custom_context and custom_context.strip():
+            context_addition = f"\n- Custom Focus Areas: {custom_context}"
+        
         context = f"""As an expert interviewer for a {role} position with {experience} experience expectation,
 generate a relevant {interview_type.lower()} interview question.
 
@@ -107,7 +112,7 @@ Role Context:
 - Experience Level: {experience}
 - Interview Type: {interview_type}
 - Difficulty: {difficulty}
-- Focus Areas: {focus_points}
+- Focus Areas: {focus_points}{context_addition}
 
 Required Question Criteria:
 1. Must be highly relevant to the {role} role
@@ -118,6 +123,7 @@ Required Question Criteria:
    - Medium: Applied knowledge, real scenarios, problem-solving
    - Hard: Complex problems, system design, edge cases
    - Legend: Expert challenges, architecture decisions, innovation
+{f"5. IMPORTANT: Focus specifically on these topics: {custom_context}" if custom_context and custom_context.strip() else ""}
 
 Format your response exactly as:
 Question: [Clear, focused question appropriate for role and level]
@@ -145,8 +151,13 @@ Expected Answer: [Detailed model answer including:
             raise
     
     def evaluate_response(self, role: str, experience: str, interview_type: str, 
-                         difficulty: str, question: str, user_answer: str) -> Dict[str, str]:
+                         difficulty: str, question: str, user_answer: str, custom_context: str = "") -> Dict[str, str]:
         """Evaluate a user's response to an interview question."""
+        # Add custom context note if provided
+        context_note = ""
+        if custom_context and custom_context.strip():
+            context_note = f"\nCustom Focus Areas: {custom_context}"
+        
         evaluation_context = f"""As an expert interviewer for {role} positions with {experience} experience expectation, evaluate this response:
 
 Question Asked: {question}
@@ -154,9 +165,9 @@ Candidate's Answer: {user_answer}
 Role: {role}
 Experience Level: {experience}
 Interview Type: {interview_type}
-Difficulty: {difficulty}
+Difficulty: {difficulty}{context_note}
 
-Provide a detailed evaluation in this EXACT format (use numbers only, no brackets):
+CRITICAL: You MUST follow this EXACT format with bullet points for BOTH Technical and Communication sections:
 
 Technical Assessment:
 - Knowledge Depth: 7.5 - [brief explanation]
@@ -182,12 +193,18 @@ Areas for Improvement:
 - [Point 2]
 
 Follow-up Question:
-[Ask a logically connected {difficulty} difficulty question]
+[Ask a logically connected {difficulty} difficulty question{f" focusing on: {custom_context}" if custom_context and custom_context.strip() else ""}]
 
 Expected Answer:
 [Provide a model answer with key points]
 
-IMPORTANT: Use decimal numbers (like 7.5, 6.0, 8.5) for all scores. Do not use brackets around scores."""
+FORMATTING RULES:
+1. Technical Assessment MUST use bullet points (- ) for each item
+2. Communication Assessment MUST use bullet points (- ) for each item
+3. Each bullet point format: "- Category: Score - Explanation"
+4. Use decimal numbers (7.5, 6.0, 8.5) for all scores
+5. Do NOT write Technical Assessment as a paragraph
+6. Do NOT combine multiple items into one line"""
 
         try:
             response_text = self.generate_content(evaluation_context)
