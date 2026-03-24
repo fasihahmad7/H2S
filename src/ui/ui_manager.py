@@ -173,6 +173,42 @@ class UIManager:
             </div>
         """, unsafe_allow_html=True)
     
+    def _format_assessment_content(self, content: str) -> str:
+        """
+        Parse and format assessment text into consistent HTML with bullet points.
+        Works regardless of how the AI formats the response.
+        """
+        import re
+        lines = content.split('\n')
+        html_lines = []
+
+        for line in lines:
+            stripped = line.strip()
+            if not stripped:
+                html_lines.append('<br>')
+                continue
+
+            # Section headers (e.g. "Technical Assessment:", "Key Strengths:")
+            if re.match(r'^[A-Z][^:]+:$', stripped) or re.match(r'^[A-Z][^:]+:\s*$', stripped):
+                html_lines.append(f'<br><b>{stripped}</b>')
+
+            # Bullet points starting with "- "
+            elif stripped.startswith('- '):
+                html_lines.append(f'<li style="margin: 4px 0;">{stripped[2:]}</li>')
+
+            # Lines that look like inline bullets (e.g. "Knowledge Depth: 7.5 - explanation")
+            elif re.match(r'^[A-Za-z ]+:\s*\d', stripped) and ' - ' in stripped:
+                html_lines.append(f'<li style="margin: 4px 0;">{stripped}</li>')
+
+            else:
+                html_lines.append(f'<span>{stripped}</span><br>')
+
+        # Wrap consecutive <li> items in <ul>
+        result = '\n'.join(html_lines)
+        result = re.sub(r'(<li.*?</li>\n?)+', lambda m: f'<ul style="margin: 4px 0 8px 16px; padding: 0;">{m.group()}</ul>', result)
+
+        return result
+
     def render_message(self, message: Dict[str, Any], is_last_message: bool, has_user_response_after: bool):
         """Render a single message in the conversation."""
         if message["role"] == "assistant":
@@ -202,9 +238,10 @@ class UIManager:
                         )
 
             elif msg_type == "assessment":
+                formatted = self._format_assessment_content(content)
                 st.markdown(
                     f'<div class="interview-message assessment">'
-                    f'<b>📊 Assessment:</b><br>{content}'
+                    f'<b>📊 Assessment:</b><br>{formatted}'
                     f'</div>',
                     unsafe_allow_html=True
                 )
