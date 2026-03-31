@@ -97,12 +97,20 @@ class AIService:
     
     def generate_interview_question(self, role: str, experience: str, 
                                   interview_type: str, difficulty: str, 
-                                  focus_points: str, custom_context: str = "") -> Dict[str, str]:
+                                  focus_points: str, custom_context: str = "", question_count: int = 0) -> Dict[str, str]:
         """Generate an interview question with expected answer."""
-        # Add custom context to the prompt if provided
-        context_addition = ""
+        # Parse multiple skills from custom_context and rotate through them
+        focused_skill = ""
         if custom_context and custom_context.strip():
-            context_addition = f"\n- Custom Focus Areas: {custom_context}"
+            skills = [s.strip() for s in custom_context.split(',')]
+            if skills:
+                # Rotate through skills based on question count
+                focused_skill = skills[question_count % len(skills)]
+                context_addition = f"\n- Current Focus: {focused_skill}\n- All Focus Areas: {custom_context}"
+            else:
+                context_addition = f"\n- Custom Focus Areas: {custom_context}"
+        else:
+            context_addition = ""
         
         context = f"""As an expert interviewer for a {role} position with {experience} experience expectation,
 generate a relevant {interview_type.lower()} interview question.
@@ -123,7 +131,7 @@ Required Question Criteria:
    - Medium: Applied knowledge, real scenarios, problem-solving
    - Hard: Complex problems, system design, edge cases
    - Legend: Expert challenges, architecture decisions, innovation
-{f"5. IMPORTANT: Focus specifically on these topics: {custom_context}" if custom_context and custom_context.strip() else ""}
+{f"5. IMPORTANT: Focus THIS question specifically on: {focused_skill}" if focused_skill else ""}
 
 Format your response exactly as:
 Question: [Clear, focused question appropriate for role and level]

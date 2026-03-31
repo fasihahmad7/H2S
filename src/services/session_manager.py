@@ -30,7 +30,8 @@ class SessionManager:
             },
             'interview_started': False,
             'is_processing': False,
-            'current_response': ""
+            'current_response': "",
+            'question_count': 0  # Track number of questions for skill rotation
         }
         
         for key, default_value in defaults.items():
@@ -72,7 +73,7 @@ class SessionManager:
         st.session_state.messages.append(message)
     
     def add_interview_history(self, role: str, experience: str, interview_type: str,
-                            question: str, answer: str, feedback: str):
+                            question: str, answer: str, feedback: str, model_answer: str = ""):
         """Add an entry to the interview history."""
         history_entry = {
             "timestamp": datetime.now().isoformat(),
@@ -80,6 +81,7 @@ class SessionManager:
             "experience": experience,
             "interview_type": interview_type,
             "question": question,
+            "model_answer": model_answer,
             "answer": answer,
             "feedback": feedback
         }
@@ -91,13 +93,33 @@ class SessionManager:
         st.session_state.session_stats['role_specific_metrics'] = role_metrics
     
     def export_history(self) -> str:
-        """Export the interview history and stats as JSON."""
-        history = {
-            'timestamp': datetime.now().isoformat(),
-            'history': st.session_state.interview_history,
-            'stats': st.session_state.session_stats
+        """Export the interview history and stats as JSON with full details."""
+        # Build comprehensive history with all details
+        detailed_history = []
+        
+        for i, entry in enumerate(st.session_state.interview_history, 1):
+            detailed_entry = {
+                "session_number": i,
+                "timestamp": entry.get("timestamp"),
+                "role": entry.get("role"),
+                "experience_level": entry.get("experience"),
+                "interview_type": entry.get("interview_type"),
+                "question": entry.get("question"),
+                "model_answer": entry.get("model_answer", "N/A"),
+                "user_answer": entry.get("answer"),
+                "assessment": entry.get("feedback"),
+                "notes": entry.get("notes", "")
+            }
+            detailed_history.append(detailed_entry)
+        
+        export_data = {
+            'export_timestamp': datetime.now().isoformat(),
+            'total_sessions': len(detailed_history),
+            'session_statistics': st.session_state.session_stats,
+            'interview_sessions': detailed_history
         }
-        return json.dumps(history, indent=2)
+        
+        return json.dumps(export_data, indent=2)
     
     def validate_user_input(self, user_input: str) -> tuple[bool, Optional[str]]:
         """Validate user input before processing."""

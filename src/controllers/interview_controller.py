@@ -31,9 +31,9 @@ class InterviewController:
         try:
             focus_points = self.get_focus_points(interview_type, role)
             
-            # Generate the first question
+            # Generate the first question (question_count = 0)
             question_data = self.ai_service.generate_interview_question(
-                role, experience, interview_type, difficulty, focus_points, custom_context
+                role, experience, interview_type, difficulty, focus_points, custom_context, question_count=0
             )
             
             # Add the question to session
@@ -89,10 +89,17 @@ class InterviewController:
                 message_type="assessment"
             )
             
-            # Add follow-up question
+            # Add follow-up question with incremented question count for skill rotation
+            st.session_state.question_count += 1
+            follow_up_data = self.ai_service.generate_interview_question(
+                role, experience, interview_type, difficulty, 
+                self.get_focus_points(interview_type, role), custom_context,
+                question_count=st.session_state.question_count
+            )
+            
             follow_up_content = {
-                "question": evaluation_data["follow_up_question"],
-                "expected_answer": evaluation_data["follow_up_expected"]
+                "question": follow_up_data["question"],
+                "expected_answer": follow_up_data["expected_answer"]
             }
             
             self.session_manager.add_message(
@@ -101,10 +108,11 @@ class InterviewController:
                 message_type="question"
             )
             
-            # Update interview history
+            # Update interview history with full details
             self.session_manager.add_interview_history(
                 role, experience, interview_type,
-                prev_question_text, user_input, evaluation_data["assessment"]
+                prev_question_text, user_input, evaluation_data["assessment"],
+                model_answer=prev_question_content.get("expected_answer", "")
             )
             
             # Update statistics
