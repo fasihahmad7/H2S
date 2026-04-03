@@ -3,7 +3,7 @@
 An intelligent interview preparation tool powered by Google's Gemini AI that provides real-time feedback on interview responses and helps you improve your interview skills.
 
 ## Demo
-Watch the demo on YouTube: [AI Interview Assistant Demo](https://youtu.be/a_EyOCGJBkw)
+Watch the demo on YouTube: [AI Interview Assistant Demo](https://youtu.be/w6jjtutRZ4M)
 
 ## Features
 

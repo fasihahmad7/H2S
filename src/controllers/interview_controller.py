@@ -33,7 +33,8 @@ class InterviewController:
             
             # Generate the first question (question_count = 0)
             question_data = self.ai_service.generate_interview_question(
-                role, experience, interview_type, difficulty, focus_points, custom_context, question_count=0
+                role, experience, interview_type, difficulty, focus_points, custom_context, 
+                question_count=0, conversation_history=[]
             )
             
             # Add the question to session
@@ -94,7 +95,8 @@ class InterviewController:
             follow_up_data = self.ai_service.generate_interview_question(
                 role, experience, interview_type, difficulty, 
                 self.get_focus_points(interview_type, role), custom_context,
-                question_count=st.session_state.question_count
+                question_count=st.session_state.question_count,
+                conversation_history=st.session_state.messages
             )
             
             follow_up_content = {

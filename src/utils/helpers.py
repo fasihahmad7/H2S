@@ -17,7 +17,10 @@ def speech_to_text() -> Optional[str]:
         with sr.Microphone() as source:
             recognizer.adjust_for_ambient_noise(source, duration=1)
             print("Listening... Speak now.")
-            audio = recognizer.listen(source, timeout=10, phrase_time_limit=30)
+            # Increased limits for longer interview answers
+            # timeout: wait up to 15 seconds for speech to start
+            # phrase_time_limit: allow up to 60 seconds of continuous speech
+            audio = recognizer.listen(source, timeout=15, phrase_time_limit=60)
             
         try:
             text = recognizer.recognize_google(audio)

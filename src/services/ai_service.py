@@ -97,66 +97,115 @@ class AIService:
     
     def generate_interview_question(self, role: str, experience: str, 
                                   interview_type: str, difficulty: str, 
-                                  focus_points: str, custom_context: str = "", question_count: int = 0) -> Dict[str, str]:
-        """Generate an interview question with expected answer."""
-        # Parse multiple skills from custom_context and rotate through them
-        focused_skill = ""
+                                  focus_points: str, custom_context: str = "", 
+                                  question_count: int = 0, conversation_history: List[Dict] = None) -> Dict[str, str]:
+        """Generate an interview question with expected answer, considering conversation flow."""
+        # Parse multiple skills from custom_context
+        skills_list = []
         if custom_context and custom_context.strip():
-            skills = [s.strip() for s in custom_context.split(',')]
-            if skills:
-                # Rotate through skills based on question count
-                focused_skill = skills[question_count % len(skills)]
-                context_addition = f"\n- Current Focus: {focused_skill}\n- All Focus Areas: {custom_context}"
+            skills_list = [s.strip() for s in custom_context.split(',') if s.strip()]
+
+        # Build conversation context if history exists
+        conversation_context = ""
+        if conversation_history and len(conversation_history) > 0:
+            # Get last 2 Q&A pairs for context
+            recent_qa = []
+            for msg in conversation_history[-4:]:  # Last 4 messages = 2 Q&A pairs
+                if msg.get("type") == "question":
+                    recent_qa.append(f"Previous Question: {msg['content'].get('question', '')}")
+                elif msg.get("role") == "user":
+                    recent_qa.append(f"Candidate's Answer: {msg['content'][:200]}...")  # Truncate long answers
+
+            if recent_qa:
+                conversation_context = "\n\nConversation History (for context):\n" + "\n".join(recent_qa[-4:])
+
+        # Build skill rotation guidance
+        skill_guidance = ""
+        if skills_list:
+            if question_count == 0:
+                # First question - introduce the first skill
+                skill_guidance = f"\n\nSkill Coverage Strategy:\n- This is the FIRST question. Focus on: {skills_list[0]}\n- All skills to cover: {', '.join(skills_list)}"
             else:
-                context_addition = f"\n- Custom Focus Areas: {custom_context}"
-        else:
-            context_addition = ""
-        
+                # Determine current and next skill
+                current_skill_index = (question_count - 1) % len(skills_list)
+                next_skill_index = question_count % len(skills_list)
+                current_skill = skills_list[current_skill_index]
+                next_skill = skills_list[next_skill_index]
+                
+                # Check if we should rotate (every 2 questions per skill allows 1 follow-up)
+                questions_on_current_skill = sum(1 for i in range(question_count) if i % len(skills_list) == current_skill_index)
+                
+                if questions_on_current_skill >= 2:
+                    # Force rotation to next skill
+                    skill_guidance = f"""
+
+Skill Coverage Strategy:
+- All skills: {', '.join(skills_list)}
+- Current skill ({current_skill}): Already covered with {questions_on_current_skill} questions
+- REQUIRED: Move to next skill: {next_skill}
+
+CRITICAL: You MUST ask a question about "{next_skill}" now to ensure balanced coverage of all skills."""
+                else:
+                    # Allow follow-up or rotation
+                    skill_guidance = f"""
+
+Skill Coverage Strategy:
+- All skills: {', '.join(skills_list)}
+- Previous skill: {current_skill}
+- Next suggested skill: {next_skill}
+
+Choose the next question:
+1. If the candidate's previous answer was weak or incomplete, ask ONE follow-up on: {current_skill}
+2. If the candidate demonstrated good understanding, move to: {next_skill}
+3. Balance natural flow with skill coverage"""
+
         context = f"""As an expert interviewer for a {role} position with {experience} experience expectation,
-generate a relevant {interview_type.lower()} interview question.
+    generate the next relevant {interview_type.lower()} interview question.
 
-Role Context:
-- Position: {role}
-- Experience Level: {experience}
-- Interview Type: {interview_type}
-- Difficulty: {difficulty}
-- Focus Areas: {focus_points}{context_addition}
+    Role Context:
+    - Position: {role}
+    - Experience Level: {experience}
+    - Interview Type: {interview_type}
+    - Difficulty: {difficulty}
+    - Focus Areas: {focus_points}{conversation_context}{skill_guidance}
 
-Required Question Criteria:
-1. Must be highly relevant to the {role} role
-2. Appropriate for {experience} experience level
-3. Follows {interview_type.lower()} interview style
-4. Matches {difficulty.lower()} difficulty:
-   - Easy: Core concepts, fundamentals, daily tasks
-   - Medium: Applied knowledge, real scenarios, problem-solving
-   - Hard: Complex problems, system design, edge cases
-   - Legend: Expert challenges, architecture decisions, innovation
-{f"5. IMPORTANT: Focus THIS question specifically on: {focused_skill}" if focused_skill else ""}
+    Required Question Criteria:
+    1. Must be highly relevant to the {role} role
+    2. Appropriate for {experience} experience level
+    3. Follows {interview_type.lower()} interview style
+    4. Matches {difficulty.lower()} difficulty:
+       - Easy: Core concepts, fundamentals, daily tasks
+       - Medium: Applied knowledge, real scenarios, problem-solving
+       - Hard: Complex problems, system design, edge cases
+       - Legend: Expert challenges, architecture decisions, innovation
+    5. Should feel natural and connected to the interview flow
+    6. Can be a follow-up if the previous answer warrants deeper exploration
 
-Format your response exactly as:
-Question: [Clear, focused question appropriate for role and level]
-Expected Answer: [Detailed model answer including:
-- Key points that should be covered
-- Common pitfalls to avoid
-- Best practices to mention
-- Experience-appropriate insights]"""
+    Format your response exactly as:
+    Question: [Clear, focused question appropriate for role and level]
+    Expected Answer: [Detailed model answer including:
+    - Key points that should be covered
+    - Common pitfalls to avoid
+    - Best practices to mention
+    - Experience-appropriate insights]"""
 
         try:
             response_text = self.generate_content(context)
-            
+
             # Parse the response
             parts = response_text.split("Expected Answer:", 1)
             question_part = parts[0].replace("Question:", "", 1).strip() if len(parts) > 0 else response_text
             answer_part = parts[1].strip() if len(parts) > 1 else "No model answer provided."
-            
+
             return {
                 "question": question_part,
                 "expected_answer": answer_part
             }
-            
+
         except Exception as e:
             logger.error(f"Error generating interview question: {e}")
             raise
+
     
     def evaluate_response(self, role: str, experience: str, interview_type: str, 
                          difficulty: str, question: str, user_answer: str, custom_context: str = "") -> Dict[str, str]:
